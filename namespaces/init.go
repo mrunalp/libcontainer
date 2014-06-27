@@ -9,11 +9,13 @@ import "C"
 
 import (
 	"fmt"
+	"log"
 	"io/ioutil"
 	"os"
 	"runtime"
 	"strings"
 	"syscall"
+//	"time"
 	"unsafe"
 
 	"github.com/docker/libcontainer"
@@ -218,7 +220,7 @@ func execUserNs(container *libcontainer.Config, args []string) error {
 	}
 
 	// Switch into a new user namespace.
-	sPipe, err := NewSyncPipe()
+	rFd, wFd, err := os.Pipe()
 	if err != nil {
 		return err
 	}
@@ -274,7 +276,9 @@ func execUserNs(container *libcontainer.Config, args []string) error {
 			proc.Kill()
 			return fmt.Errorf("Failed to write mappings: %s", err)
 		}
-		sPipe.Close()
+
+		rFd.Close()
+		wFd.Close()
 
 		state, err := proc.Wait()
 		if err != nil {
@@ -283,6 +287,17 @@ func execUserNs(container *libcontainer.Config, args []string) error {
 		}
 		os.Exit(state.Sys().(syscall.WaitStatus).ExitStatus())
 	}
+
+	log.Println("Waiting for parent")
+
+	// TODO: Convert to raw syscalls.
+	wFd.Close()
+	_, err = ioutil.ReadAll(rFd)
+	if err != nil {
+		return err
+	}
+
+	log.Println("Ready now")
 
 	// In child.
 	if dir != nil {
