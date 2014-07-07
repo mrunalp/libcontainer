@@ -4,6 +4,7 @@ package network
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/docker/libcontainer/utils"
 )
@@ -65,6 +66,7 @@ func (v *Veth) Initialize(config *Network, context map[string]string) error {
 	if err := SetInterfaceIp(defaultDevice, config.Address); err != nil {
 		return fmt.Errorf("set %s ip %s", defaultDevice, err)
 	}
+	log.Println("Skipping mtu")
 	if err := SetMtu(defaultDevice, config.Mtu); err != nil {
 		return fmt.Errorf("set %s mtu to %d %s", defaultDevice, config.Mtu, err)
 	}

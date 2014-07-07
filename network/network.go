@@ -3,6 +3,7 @@
 package network
 
 import (
+	"fmt"
 	"net"
 
 	"github.com/docker/libcontainer/netlink"
@@ -75,7 +76,11 @@ func SetInterfaceIp(name string, rawIp string) error {
 func SetMtu(name string, mtu int) error {
 	iface, err := net.InterfaceByName(name)
 	if err != nil {
-		return err
+		return fmt.Errorf("net.InterfaceByName: %v", err)
 	}
-	return netlink.NetworkSetMTU(iface, mtu)
+	err = netlink.NetworkSetMTU(iface, mtu)
+	if err != nil {
+		return fmt.Errorf("networksetmtu: %v", err)
+	}
+	return err
 }

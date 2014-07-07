@@ -5,6 +5,7 @@ package namespaces
 import (
 	"fmt"
 	"os"
+	"log"
 	"runtime"
 	"strings"
 	"syscall"
@@ -60,12 +61,16 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, syn
 			return fmt.Errorf("setctty %s", err)
 		}
 	}
+
+	log.Println(os.Getuid())
+
 	if err := setupNetwork(container, context); err != nil {
 		return fmt.Errorf("setup networking %s", err)
 	}
 	if err := setupRoute(container); err != nil {
 		return fmt.Errorf("setup route %s", err)
 	}
+	//return system.Execv(args[0], args[0:], container.Env)
 
 	label.Init()
 

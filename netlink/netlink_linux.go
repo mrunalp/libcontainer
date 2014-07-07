@@ -522,7 +522,7 @@ func NetworkLinkDown(iface *net.Interface) error {
 func NetworkSetMTU(iface *net.Interface, mtu int) error {
 	s, err := getNetlinkSocket()
 	if err != nil {
-		return err
+		return fmt.Errorf("getNetlinkSocket: %v", err)
 	}
 	defer s.Close()
 
@@ -545,7 +545,7 @@ func NetworkSetMTU(iface *net.Interface, mtu int) error {
 	wb.AddData(data)
 
 	if err := s.Send(wb); err != nil {
-		return err
+		return fmt.Errorf("s.Send: %v", err)
 	}
 	return s.HandleAck(wb.Seq)
 }
