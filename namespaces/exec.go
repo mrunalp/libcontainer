@@ -3,8 +3,12 @@
 package namespaces
 
 import (
+	"fmt"
+	"log"
+	"io/ioutil"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 
 	"github.com/docker/libcontainer"
@@ -14,6 +18,38 @@ import (
 	"github.com/docker/libcontainer/network"
 	"github.com/dotcloud/docker/pkg/system"
 )
+
+// Write UID/GID mappings for a process.
+func writeUserMappings(pid int, uidMappings, gidMappings []libcontainer.IdMap) error {
+	if len(uidMappings) > 5 || len(gidMappings) > 5 {
+		return fmt.Errorf("Only 5 uid/gid mappings are supported by the kernel")
+	}
+
+	uidMapStr := make([]string, len(uidMappings))
+	for i, um := range uidMappings {
+		uidMapStr[i] = fmt.Sprintf("%v %v %v", um.ContainerId, um.HostId, um.Size)
+	}
+
+	gidMapStr := make([]string, len(gidMappings))
+	for i, gm := range gidMappings {
+		gidMapStr[i] = fmt.Sprintf("%v %v %v", gm.ContainerId, gm.HostId, gm.Size)
+	}
+
+	uidMap := []byte(strings.Join(uidMapStr, "\n"))
+	gidMap := []byte(strings.Join(gidMapStr, "\n"))
+
+	uidMappingsFile := fmt.Sprintf("/proc/%v/uid_map", pid)
+	gidMappingsFile := fmt.Sprintf("/proc/%v/gid_map", pid)
+
+	if err := ioutil.WriteFile(uidMappingsFile, uidMap, 0644); err != nil {
+		return err
+	}
+	if err := ioutil.WriteFile(gidMappingsFile, gidMap, 0644); err != nil {
+		return err
+	}
+
+	return nil
+}
 
 // TODO(vishh): This is part of the libcontainer API and it does much more than just namespaces related work.
 // Move this to libcontainer package.
@@ -48,6 +84,8 @@ func Exec(container *libcontainer.Config, term Terminal, rootfs, dataPath string
 		return -1, err
 	}
 	defer term.Close()
+
+	log.Println("Starting command:%v %v",command.Path, command.Args)
 
 	if err := command.Start(); err != nil {
 		return -1, err
@@ -92,6 +130,12 @@ func Exec(container *libcontainer.Config, term Terminal, rootfs, dataPath string
 		return -1, err
 	}
 	defer libcontainer.DeleteState(dataPath)
+
+	if err := writeUserMappings(command.Process.Pid, container.UidMappings, container.GidMappings); err != nil {
+		command.Process.Kill()
+		command.Wait()
+		return -1, err
+	}
 
 	// Sync with child
 	if err := syncPipe.ReadFromChild(); err != nil {
