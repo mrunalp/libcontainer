@@ -34,6 +34,7 @@ func NsInit() {
 		nsenterCommand,
 		pauseCommand,
 		unpauseCommand,
+		setupCommand,
 	}
 
 	if err := app.Run(os.Args); err != nil {

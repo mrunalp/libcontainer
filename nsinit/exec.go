@@ -52,10 +52,13 @@ func execAction(context *cli.Context) {
 func startContainer(container *libcontainer.Config, term namespaces.Terminal, dataPath string, args []string) (int, error) {
 	var (
 		cmd  *exec.Cmd
+		setupCmd  *exec.Cmd
 		sigc = make(chan os.Signal, 10)
 	)
 
 	signal.Notify(sigc)
+
+	log.Printf("DATAPATH: %s", dataPath)
 
 	createCommand := func(container *libcontainer.Config, console, rootfs, dataPath, init string, pipe *os.File, args []string) *exec.Cmd {
 		cmd = namespaces.DefaultCreateCommand(container, console, rootfs, dataPath, init, pipe, args)
@@ -63,6 +66,14 @@ func startContainer(container *libcontainer.Config, term namespaces.Terminal, da
 			cmd.Env = append(cmd.Env, fmt.Sprintf("log=%s", logPath))
 		}
 		return cmd
+	}
+
+	setupCommand := func(container *libcontainer.Config, console, rootfs, dataPath, init string, pipe *os.File, args []string) *exec.Cmd {
+		setupCmd = namespaces.DefaultSetupCommand(container, console, rootfs, dataPath, init, pipe, args)
+		if logPath != "" {
+			setupCmd.Env = append(setupCmd.Env, fmt.Sprintf("log=%s", logPath))
+		}
+		return setupCmd
 	}
 
 	startCallback := func() {
@@ -73,5 +84,5 @@ func startContainer(container *libcontainer.Config, term namespaces.Terminal, da
 		}()
 	}
 
-	return namespaces.Exec(container, term, "", dataPath, args, createCommand, startCallback)
+	return namespaces.Exec(container, term, "", dataPath, args, createCommand, setupCommand, startCallback)
 }
