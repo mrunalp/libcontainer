@@ -65,6 +65,14 @@ func startContainer(container *libcontainer.Config, term namespaces.Terminal, da
 		return cmd
 	}
 
+	setupCommand := func(container *libcontainer.Config, console, rootfs, dataPath, init string, pipe *os.File, args []string) *exec.Cmd {
+		cmd = namespaces.DefaultSetupCommand(container, console, rootfs, dataPath, init, pipe, args)
+		if logPath != "" {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("log=%s", logPath))
+		}
+		return cmd
+	}
+
 	startCallback := func() {
 		go func() {
 			for sig := range sigc {
@@ -73,5 +81,5 @@ func startContainer(container *libcontainer.Config, term namespaces.Terminal, da
 		}()
 	}
 
-	return namespaces.Exec(container, term, "", dataPath, args, createCommand, startCallback)
+	return namespaces.Exec(container, term, "", dataPath, args, createCommand, setupCommand, startCallback)
 }

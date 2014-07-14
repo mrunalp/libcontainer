@@ -4,7 +4,7 @@ package namespaces
 
 import (
 	"fmt"
-	"log"
+	_ "log"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -55,7 +55,7 @@ func writeUserMappings(pid int, uidMappings, gidMappings []libcontainer.IdMap) e
 // Move this to libcontainer package.
 // Exec performs setup outside of a namespace so that a container can be
 // executed.  Exec is a high level function for working with container namespaces.
-func Exec(container *libcontainer.Config, term Terminal, rootfs, dataPath string, args []string, createCommand CreateCommand, startCallback func()) (int, error) {
+func Exec(container *libcontainer.Config, term Terminal, rootfs, dataPath string, args []string, createCommand CreateCommand, setupCommand CreateCommand, startCallback func()) (int, error) {
 	var (
 		master  *os.File
 		console string
@@ -84,8 +84,6 @@ func Exec(container *libcontainer.Config, term Terminal, rootfs, dataPath string
 		return -1, err
 	}
 	defer term.Close()
-
-	log.Println("Starting command:%v %v",command.Path, command.Args)
 
 	if err := command.Start(); err != nil {
 		return -1, err
@@ -137,7 +135,43 @@ func Exec(container *libcontainer.Config, term Terminal, rootfs, dataPath string
 		return -1, err
 	}
 
-	// Sync with child
+	// Start and run a helper process to setup the container
+	syncPipe2, err := NewSyncPipe()
+	if err != nil {
+		command.Process.Kill()
+		command.Wait()
+		return -1, err
+	}
+	defer syncPipe2.Close()
+
+	setupCmd := setupCommand(container, console, rootfs, dataPath, os.Args[0], syncPipe2.child, args)
+
+	if err := setupCmd.Start(); err != nil {
+		command.Process.Kill()
+		command.Wait()
+		return -1, err
+	}
+
+	// Now we passed the pipe to the child, close our side
+	syncPipe2.CloseChild()
+
+	if err := InitializeNetworking(container, setupCmd.Process.Pid, syncPipe2, &networkState); err != nil {
+		command.Process.Kill()
+		command.Wait()
+		setupCmd.Process.Kill()
+		setupCmd.Wait()
+		return -1, err
+	}
+
+	if err := syncPipe2.ReadFromChild(); err != nil {
+		command.Process.Kill()
+		command.Wait()
+		setupCmd.Process.Kill()
+		setupCmd.Wait()
+		return -1, err
+	}
+
+	// Sync with original child
 	if err := syncPipe.ReadFromChild(); err != nil {
 		command.Process.Kill()
 		command.Wait()
@@ -189,6 +223,25 @@ func DefaultCreateCommand(container *libcontainer.Config, console, rootfs, dataP
 	command.Env = append(os.Environ(), env...)
 
 	system.SetCloneFlags(command, uintptr(GetNamespaceFlags(container.Namespaces)))
+	command.SysProcAttr.Pdeathsig = syscall.SIGKILL
+	command.ExtraFiles = []*os.File{pipe}
+
+	return command
+}
+
+func DefaultSetupCommand(container *libcontainer.Config, console, rootfs, dataPath, init string, pipe *os.File, args []string) *exec.Cmd {
+	// get our binary name from arg0 so we can always reexec ourself
+	env := []string{
+		"console=" + console,
+		"pipe=5",
+		"data_path=" + dataPath,
+	}
+
+	command := exec.Command(init, append([]string{"setup"}, args...)...)
+	// make sure the process is executed inside the context of the rootfs
+	command.Dir = rootfs
+	command.Env = append(os.Environ(), env...)
+
 	command.SysProcAttr.Pdeathsig = syscall.SIGKILL
 	command.ExtraFiles = []*os.File{pipe}
 
