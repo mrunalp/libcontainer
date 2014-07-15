@@ -52,6 +52,7 @@ func execAction(context *cli.Context) {
 func startContainer(container *libcontainer.Config, term namespaces.Terminal, dataPath string, args []string) (int, error) {
 	var (
 		cmd  *exec.Cmd
+		setupCmd  *exec.Cmd
 		sigc = make(chan os.Signal, 10)
 	)
 
@@ -66,11 +67,11 @@ func startContainer(container *libcontainer.Config, term namespaces.Terminal, da
 	}
 
 	setupCommand := func(container *libcontainer.Config, console, rootfs, dataPath, init string, pipe *os.File, args []string) *exec.Cmd {
-		cmd = namespaces.DefaultSetupCommand(container, console, rootfs, dataPath, init, pipe, args)
+		setupCmd = namespaces.DefaultSetupCommand(container, console, rootfs, dataPath, init, pipe, args)
 		if logPath != "" {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("log=%s", logPath))
+			setupCmd.Env = append(setupCmd.Env, fmt.Sprintf("log=%s", logPath))
 		}
-		return cmd
+		return setupCmd
 	}
 
 	startCallback := func() {

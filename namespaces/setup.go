@@ -2,8 +2,9 @@ package namespaces
 
 import (
 	"fmt"
-	_ "os"
+	"os"
 	"runtime"
+	"syscall"
 
 	"github.com/docker/libcontainer"
 	"github.com/docker/libcontainer/apparmor"
@@ -17,12 +18,46 @@ import (
 	_ "github.com/dotcloud/docker/pkg/user"
 )
 
+const (
+        SYS_SETNS  = 308 // look here for different arch http://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=7b21fddd087678a70ad64afc0f632e0f1071b092
+)
+
+func setns(fd uintptr, flags uintptr) error {
+	_, _, err := syscall.RawSyscall(SYS_SETNS, fd, flags, 0)
+	if err != 0 {
+		return err
+	}
+	return nil
+}
+
+func JoinNamespaces(pid int) error {
+	namespaces := []string{"ipc", "mnt", "net", "uts"}
+	for ns := range namespaces {
+		fPath := fmt.Sprintf("/proc/%v/%v", pid, ns)
+		file, err := os.Open(fPath)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+
+		if err := setns(file.Fd(), 0); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func SetupContainer(container *libcontainer.Config, uncleanRootfs, consolePath string, syncPipe *SyncPipe, initPid int) (err error) {
 	defer func() {
 		if err != nil {
-			syncPipe.ReportChildError(err)
+			syncPipe.ReportChildError(fmt.Errorf("SetupContainer: %v", err))
 		}
 	}()
+
+	// Join all namespaces except pid/user
+	if err := JoinNamespaces(initPid); err != nil {
+		return err
+	}
 
 	rootfs, err := utils.ResolveRootfs(uncleanRootfs)
 	if err != nil {
@@ -38,7 +73,7 @@ func SetupContainer(container *libcontainer.Config, uncleanRootfs, consolePath s
 	// We always read this as it is a way to sync with the parent as well
 	networkState, err := syncPipe.ReadFromParent()
 	if err != nil {
-		return err
+		return fmt.Errorf("ReadFromParent: %s", err)
 	}
 
 	if err := setupNetwork(container, networkState); err != nil {

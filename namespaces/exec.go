@@ -4,7 +4,7 @@ package namespaces
 
 import (
 	"fmt"
-	_ "log"
+	"log"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -135,7 +135,10 @@ func Exec(container *libcontainer.Config, term Terminal, rootfs, dataPath string
 		return -1, err
 	}
 
+	log.Println("Wrote User Mappings.")
+
 	// Start and run a helper process to setup the container
+
 	syncPipe2, err := NewSyncPipe()
 	if err != nil {
 		command.Process.Kill()
@@ -145,23 +148,27 @@ func Exec(container *libcontainer.Config, term Terminal, rootfs, dataPath string
 	defer syncPipe2.Close()
 
 	setupCmd := setupCommand(container, console, rootfs, dataPath, os.Args[0], syncPipe2.child, args)
+	log.Println("Before setup started")
 
 	if err := setupCmd.Start(); err != nil {
 		command.Process.Kill()
 		command.Wait()
 		return -1, err
 	}
+	log.Println("After setup started")
 
 	// Now we passed the pipe to the child, close our side
 	syncPipe2.CloseChild()
+	log.Println("Before sending network")
 
-	if err := InitializeNetworking(container, setupCmd.Process.Pid, syncPipe2, &networkState); err != nil {
+	if err := syncPipe2.SendToChild(&networkState); err != nil {
 		command.Process.Kill()
 		command.Wait()
 		setupCmd.Process.Kill()
 		setupCmd.Wait()
 		return -1, err
 	}
+	log.Println("After sending network")
 
 	if err := syncPipe2.ReadFromChild(); err != nil {
 		command.Process.Kill()
@@ -170,6 +177,18 @@ func Exec(container *libcontainer.Config, term Terminal, rootfs, dataPath string
 		setupCmd.Wait()
 		return -1, err
 	}
+	log.Println("After read child")
+
+	if err := setupCmd.Wait(); err != nil {
+		if _, ok := err.(*exec.ExitError); !ok {
+			log.Println("Setup command failed.")
+			command.Process.Kill()
+			command.Wait()
+			return -1, err
+		}
+	}
+	log.Println("After waiting for setup")
+
 
 	// Sync with original child
 	if err := syncPipe.ReadFromChild(); err != nil {
@@ -233,7 +252,7 @@ func DefaultSetupCommand(container *libcontainer.Config, console, rootfs, dataPa
 	// get our binary name from arg0 so we can always reexec ourself
 	env := []string{
 		"console=" + console,
-		"pipe=5",
+		"pipe=3",
 		"data_path=" + dataPath,
 	}
 
@@ -242,7 +261,7 @@ func DefaultSetupCommand(container *libcontainer.Config, console, rootfs, dataPa
 	command.Dir = rootfs
 	command.Env = append(os.Environ(), env...)
 
-	command.SysProcAttr.Pdeathsig = syscall.SIGKILL
+	//command.SysProcAttr.Pdeathsig = syscall.SIGKILL
 	command.ExtraFiles = []*os.File{pipe}
 
 	return command

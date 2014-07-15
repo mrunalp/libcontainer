@@ -30,7 +30,7 @@ import (
 func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, syncPipe *SyncPipe, args []string) (err error) {
 	defer func() {
 		if err != nil {
-			syncPipe.ReportChildError(err)
+			syncPipe.ReportChildError(fmt.Errorf("Init: %v", err))
 		}
 	}()
 
@@ -48,7 +48,7 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, syn
 	// We always read this as it is a way to sync with the parent as well
 	networkState, err := syncPipe.ReadFromParent()
 	if err != nil {
-		return err
+		return fmt.Errorf("init read from parent: %s", err)
 	}
 
 	if consolePath != "" {
