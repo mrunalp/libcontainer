@@ -58,6 +58,8 @@ func startContainer(container *libcontainer.Config, term namespaces.Terminal, da
 
 	signal.Notify(sigc)
 
+	log.Printf("DATAPATH: %s", dataPath)
+
 	createCommand := func(container *libcontainer.Config, console, rootfs, dataPath, init string, pipe *os.File, args []string) *exec.Cmd {
 		cmd = namespaces.DefaultCreateCommand(container, console, rootfs, dataPath, init, pipe, args)
 		if logPath != "" {

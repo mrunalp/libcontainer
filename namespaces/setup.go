@@ -11,6 +11,7 @@ import (
 	_ "github.com/docker/libcontainer/console"
 	"github.com/docker/libcontainer/label"
 	"github.com/docker/libcontainer/mount"
+	"github.com/docker/libcontainer/network"
 	_ "github.com/docker/libcontainer/security/capabilities"
 	"github.com/docker/libcontainer/security/restrict"
 	"github.com/docker/libcontainer/utils"
@@ -32,8 +33,8 @@ func setns(fd uintptr, flags uintptr) error {
 
 func JoinNamespaces(pid int) error {
 	namespaces := []string{"ipc", "mnt", "net", "uts"}
-	for ns := range namespaces {
-		fPath := fmt.Sprintf("/proc/%v/%v", pid, ns)
+	for _, ns := range namespaces {
+		fPath := fmt.Sprintf("/proc/%v/ns/%v", pid, ns)
 		file, err := os.Open(fPath)
 		if err != nil {
 			return err
@@ -47,16 +48,10 @@ func JoinNamespaces(pid int) error {
 	return nil
 }
 
-func SetupContainer(container *libcontainer.Config, uncleanRootfs, consolePath string, syncPipe *SyncPipe, initPid int) (err error) {
-	defer func() {
-		if err != nil {
-			syncPipe.ReportChildError(fmt.Errorf("SetupContainer: %v", err))
-		}
-	}()
-
+func SetupContainer(container *libcontainer.Config, uncleanRootfs, consolePath string, state *libcontainer.State) (err error) {
 	// Join all namespaces except pid/user
-	if err := JoinNamespaces(initPid); err != nil {
-		return err
+	if err := JoinNamespaces(state.InitPid); err != nil {
+		return fmt.Errorf("setns failed: %v", err)
 	}
 
 	rootfs, err := utils.ResolveRootfs(uncleanRootfs)
@@ -70,11 +65,10 @@ func SetupContainer(container *libcontainer.Config, uncleanRootfs, consolePath s
 		return err
 	}
 
-	// We always read this as it is a way to sync with the parent as well
-	networkState, err := syncPipe.ReadFromParent()
-	if err != nil {
-		return fmt.Errorf("ReadFromParent: %s", err)
-	}
+	var networkState *network.NetworkState
+	networkState.VethHost = state.NetworkState.VethHost
+	networkState.VethChild = state.NetworkState.VethChild
+	networkState.NsPath = state.NetworkState.NsPath
 
 	if err := setupNetwork(container, networkState); err != nil {
 		return fmt.Errorf("setup networking %s", err)

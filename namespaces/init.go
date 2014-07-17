@@ -4,6 +4,7 @@ package namespaces
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"runtime"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/docker/libcontainer/apparmor"
 	"github.com/docker/libcontainer/console"
 	"github.com/docker/libcontainer/label"
+	"github.com/docker/libcontainer/selinux"
 	"github.com/docker/libcontainer/mount"
 	"github.com/docker/libcontainer/netlink"
 	"github.com/docker/libcontainer/network"
@@ -64,6 +66,20 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, syn
 			return fmt.Errorf("setctty %s", err)
 		}
 	}
+
+
+	networkState, err = syncPipe.ReadFromParent()
+	if err != nil {
+		return fmt.Errorf("init read from parent: %s", err)
+	}
+
+	label.Init()
+	log.Println("SelinuxEnabled", selinux.SelinuxEnabled())
+	log.Println("ProcessLabel", container.ProcessLabel)
+	if err := label.SetProcessLabel(container.ProcessLabel); err != nil {
+		return fmt.Errorf("set process label %s", err)
+	}
+
 	return system.Execv(args[0], args[0:], container.Env)
 
 	if err := setupNetwork(container, networkState); err != nil {
@@ -86,6 +102,7 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, syn
 			return fmt.Errorf("sethostname %s", err)
 		}
 	}
+
 
 	runtime.LockOSThread()
 

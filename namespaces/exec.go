@@ -78,6 +78,8 @@ func Exec(container *libcontainer.Config, term Terminal, rootfs, dataPath string
 		term.SetMaster(master)
 	}
 
+	log.Printf("console: %s", console)
+
 	command := createCommand(container, console, rootfs, dataPath, os.Args[0], syncPipe.child, args)
 
 	if err := term.Attach(command); err != nil {
@@ -109,12 +111,22 @@ func Exec(container *libcontainer.Config, term Terminal, rootfs, dataPath string
 		defer cleaner.Cleanup()
 	}
 
+	// Write user mappings while child is waiting
+	if err := writeUserMappings(command.Process.Pid, container.UidMappings, container.GidMappings); err != nil {
+		command.Process.Kill()
+		command.Wait()
+		return -1, err
+	}
+	log.Println("Wrote User Mappings.")
+
 	var networkState network.NetworkState
 	if err := InitializeNetworking(container, command.Process.Pid, syncPipe, &networkState); err != nil {
 		command.Process.Kill()
 		command.Wait()
 		return -1, err
 	}
+
+	log.Printf("%+v", networkState)
 
 	state := &libcontainer.State{
 		InitPid:       command.Process.Pid,
@@ -129,15 +141,10 @@ func Exec(container *libcontainer.Config, term Terminal, rootfs, dataPath string
 	}
 	defer libcontainer.DeleteState(dataPath)
 
-	if err := writeUserMappings(command.Process.Pid, container.UidMappings, container.GidMappings); err != nil {
-		command.Process.Kill()
-		command.Wait()
-		return -1, err
-	}
 
-	log.Println("Wrote User Mappings.")
 
 	// Start and run a helper process to setup the container
+/*
 
 	syncPipe2, err := NewSyncPipe()
 	if err != nil {
@@ -191,6 +198,13 @@ func Exec(container *libcontainer.Config, term Terminal, rootfs, dataPath string
 
 
 	// Sync with original child
+	if err := syncPipe.SendToChild(&networkState); err != nil {
+		command.Process.Kill()
+		command.Wait()
+		return -1, err
+	}
+*/
+
 	if err := syncPipe.ReadFromChild(); err != nil {
 		command.Process.Kill()
 		command.Wait()
@@ -292,6 +306,7 @@ func InitializeNetworking(container *libcontainer.Config, nspid int, pipe *SyncP
 			return err
 		}
 	}
+	log.Printf("NS: %+v", networkState)
 	return pipe.SendToChild(networkState)
 }
 

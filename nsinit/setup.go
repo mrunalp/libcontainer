@@ -7,7 +7,6 @@ import (
 	_ "os/exec"
 	_ "runtime"
 	_ "strings"
-	"strconv"
 
 	"github.com/codegangsta/cli"
 	"github.com/docker/libcontainer"
@@ -16,7 +15,6 @@ import (
 
 var (
 	cons   = os.Getenv("console")
-	rPipeFd = os.Getenv("pipe")
 
 	setupCommand = cli.Command{
 		Name:   "setup",
@@ -47,18 +45,8 @@ func setupAction(context *cli.Context) {
 		log.Fatal(err)
 	}
 
-	pipeFd, err := strconv.Atoi(rPipeFd)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	syncPipe, err := namespaces.NewSyncPipeFromFd(0, uintptr(pipeFd))
-	if err != nil {
-		log.Fatalf("unable to create sync pipe: %s", err)
-	}
-
 	if state != nil {
-		if err := namespaces.SetupContainer(container, rootfs, cons, syncPipe, state.InitPid); err != nil {
+		if err := namespaces.SetupContainer(container, rootfs, cons, state); err != nil {
 			log.Fatalf("Failed to setup container: %s", err)
 		}
 	}
