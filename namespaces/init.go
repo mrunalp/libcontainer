@@ -4,6 +4,7 @@ package namespaces
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"runtime"
 	"strings"
@@ -47,13 +48,16 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, syn
 	}
 
 	// We always read this as it is a way to sync with the parent as well
+	log.Println("Waiting for parent sync")
 	networkState, err := syncPipe.ReadFromParent()
 	if err != nil {
 		return err
 	}
+	log.Println("Parent sync done")
+
 
 	if consolePath != "" {
-		if err := console.OpenAndDup(consolePath); err != nil {
+		if err := console.OpenAndDup("/dev/console"); err != nil {
 			return err
 		}
 	}
@@ -65,6 +69,27 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, syn
 			return fmt.Errorf("setctty %s", err)
 		}
 	}
+
+
+	if container.WorkingDir == "" {
+		container.WorkingDir = "/"
+	}
+
+	if err := syscall.Chdir(container.WorkingDir); err != nil {
+		return fmt.Errorf("chdir to %s %s", container.WorkingDir, err)
+	}
+
+	u := os.Getuid()
+	log.Println("UID: ", u)
+
+/*
+	if err := syscall.Setuid(1000); err != nil {
+		return fmt.Errorf("setuid %s", err)
+	}
+*/
+
+	return system.Execv(args[0], args[0:], container.Env)
+
 	if err := setupNetwork(container, networkState); err != nil {
 		return fmt.Errorf("setup networking %s", err)
 	}

@@ -54,8 +54,9 @@ func execAction(context *cli.Context) {
 // Signals sent to the current process will be forwarded to container.
 func startContainer(container *libcontainer.Config, dataPath string, args []string) (int, error) {
 	var (
-		cmd  *exec.Cmd
-		sigc = make(chan os.Signal, 10)
+		cmd      *exec.Cmd
+		setupCmd *exec.Cmd
+		sigc     = make(chan os.Signal, 10)
 	)
 
 	signal.Notify(sigc)
@@ -66,6 +67,15 @@ func startContainer(container *libcontainer.Config, dataPath string, args []stri
 			cmd.Env = append(cmd.Env, fmt.Sprintf("log=%s", logPath))
 		}
 		return cmd
+	}
+
+	setupCommand := func(container *libcontainer.Config, console, rootfs, dataPath, init string, args []string) *exec.Cmd {
+		log.Println("ROOTFS: ", rootfs)
+		setupCmd = namespaces.DefaultSetupCommand(container, console, rootfs, dataPath, init, args)
+		if logPath != "" {
+			setupCmd.Env = append(setupCmd.Env, fmt.Sprintf("log=%s", logPath))
+		}
+		return setupCmd
 	}
 
 	var (
@@ -114,7 +124,12 @@ func startContainer(container *libcontainer.Config, dataPath string, args []stri
 		}()
 	}
 
-	return namespaces.Exec(container, stdin, stdout, stderr, console, "", dataPath, args, createCommand, startCallback)
+	cwd, err := os.Getwd()
+	if err != nil {
+		return -1, err
+	}
+
+	return namespaces.Exec(container, stdin, stdout, stderr, console, cwd, dataPath, args, createCommand, setupCommand, startCallback)
 }
 
 func resizeTty(master *os.File) {
