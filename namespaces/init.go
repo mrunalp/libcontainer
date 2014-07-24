@@ -3,7 +3,10 @@
 package namespaces
 
 import (
+	"bufio"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"runtime"
 	"strings"
@@ -23,6 +26,30 @@ import (
 	"github.com/docker/libcontainer/utils"
 	"github.com/dotcloud/docker/pkg/user"
 )
+
+func printCaps(p string) {
+	log.Println("Printing caps for %v", p)
+	pth := fmt.Sprintf("/proc/%v/status", p)
+	f, err := os.Open(pth)
+	//f, err := os.Open("/proc/self/status")
+	if err != nil {
+		return
+	}
+	b := bufio.NewReader(f)
+	for {
+		line, e := b.ReadString('\n')
+		if e != nil {
+			if e != io.EOF {
+				err = e
+			}
+			break
+		}
+		if strings.HasPrefix(line, "Cap") {
+			log.Println(line)
+		}
+	}
+	f.Close()
+}
 
 // TODO(vishh): This is part of the libcontainer API and it does much more than just namespaces related work.
 // Move this to libcontainer package.
@@ -104,6 +131,7 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, syn
 		}
 	}
 
+/*
 	pdeathSignal, err := system.GetParentDeathSignal()
 	if err != nil {
 		return fmt.Errorf("get parent death signal %s", err)
@@ -117,6 +145,13 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, syn
 	// signal, so we restore it here.
 	if err := RestoreParentDeathSignal(pdeathSignal); err != nil {
 		return fmt.Errorf("restore parent death signal %s", err)
+	}
+*/
+
+	printCaps("self")
+
+	if err := syscall.Unshare(syscall.CLONE_NEWUSER); err != nil {
+		return fmt.Errorf("unshare %s", err)
 	}
 
 	return system.Execv(args[0], args[0:], container.Env)
