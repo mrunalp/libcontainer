@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"strconv"
 	"syscall"
 
 	"github.com/docker/libcontainer"
@@ -49,6 +50,7 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	if err := command.Start(); err != nil {
 		return -1, err
 	}
+	printCaps(strconv.Itoa(command.Process.Pid))
 
 	// Now we passed the pipe to the child, close our side
 	syncPipe.CloseChild()
@@ -69,6 +71,10 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	if cleaner != nil {
 		defer cleaner.Cleanup()
 	}
+
+	printCaps("self")
+	printUidMap()
+	printGidMap()
 
 	// Write user mappings to the child process
 

@@ -3,7 +3,9 @@
 package namespaces
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"runtime"
@@ -25,6 +27,67 @@ import (
 	"github.com/dotcloud/docker/pkg/user"
 )
 
+func printCaps(p string) {
+	log.Println("Printing caps for %v", p)
+	pth := fmt.Sprintf("/proc/%v/status", p)
+	f, err := os.Open(pth)
+	//f, err := os.Open("/proc/self/status")
+	if err != nil {
+		return
+	}
+	b := bufio.NewReader(f)
+	for {
+		line, e := b.ReadString('\n')
+		if e != nil {
+			if e != io.EOF {
+				err = e
+			}
+			break
+		}
+		if strings.HasPrefix(line, "Cap") {
+			log.Println(line)
+		}
+	}
+	f.Close()
+}
+
+func printUidMap() {
+	f, err := os.Open("/proc/self/uid_map")
+	if err != nil {
+		return
+	}
+	b := bufio.NewReader(f)
+	for {
+		line, e := b.ReadString('\n')
+		if e != nil {
+			if e != io.EOF {
+				err = e
+			}
+			break
+		}
+		log.Println(line)
+	}
+	f.Close()
+}
+
+func printGidMap() {
+	f, err := os.Open("/proc/self/gid_map")
+	if err != nil {
+		return
+	}
+	b := bufio.NewReader(f)
+	for {
+		line, e := b.ReadString('\n')
+		if e != nil {
+			if e != io.EOF {
+				err = e
+			}
+			break
+		}
+		log.Println(line)
+	}
+	f.Close()
+}
 // TODO(vishh): This is part of the libcontainer API and it does much more than just namespaces related work.
 // Move this to libcontainer package.
 // Init is the init process that first runs inside a new namespace to setup mounts, users, networking,
@@ -81,12 +144,17 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, syn
 
 	u := os.Getuid()
 	log.Println("UID: ", u)
+	printUidMap()
+	printGidMap()
+	//printCaps("self")
+
 
 /*
 	if err := syscall.Setuid(1000); err != nil {
 		return fmt.Errorf("setuid %s", err)
 	}
 */
+
 
 	return system.Execv(args[0], args[0:], container.Env)
 
