@@ -200,6 +200,11 @@ func DefaultCreateCommand(container *libcontainer.Config, console, dataPath, ini
 		if container.UidMappings != nil || container.GidMappings != nil {
 			AddUidGidMappings(command.SysProcAttr, container)
 		}
+
+		// Default to root user when user namespaces are enabled.
+		if command.SysProcAttr.Credential == nil {
+			command.SysProcAttr.Credential = &syscall.Credential{}
+		}
 	}
 
 	return command
