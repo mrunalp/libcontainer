@@ -21,7 +21,7 @@ import (
 // Move this to libcontainer package.
 // Exec performs setup outside of a namespace so that a container can be
 // executed.  Exec is a high level function for working with container namespaces.
-func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Writer, console, dataPath string, args []string, createCommand CreateCommand, startCallback func()) (int, error) {
+func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Writer, console, dataPath string, args []string, createCommand CreateCommand, setupCommand SetupCommand, startCallback func()) (int, error) {
 	var (
 		err error
 	)
@@ -92,6 +92,29 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	}
 	defer libcontainer.DeleteState(dataPath)
 
+	// Start the setup process to setup the init process
+	setupCmd := setupCommand(container, console, dataPath, os.Args[0], args)
+	if err := setupCmd.Start(); err != nil {
+		command.Process.Kill()
+		command.Wait()
+		return -1, err
+	}
+
+	if err := setupCmd.Wait(); err != nil {
+		if _, ok := err.(*exec.ExitError); !ok {
+			command.Process.Kill()
+			command.Wait()
+			return -1, err
+		}
+	}
+
+	// Send network data to child
+	if err := syncPipe.SendToChild(&networkState); err != nil {
+		command.Process.Kill()
+		command.Wait()
+		return -1, err
+	}
+
 	// Sync with child
 	if err := syncPipe.ReadFromChild(); err != nil {
 		command.Process.Kill()
@@ -155,6 +178,28 @@ func DefaultCreateCommand(container *libcontainer.Config, console, dataPath, ini
 	return command
 }
 
+// DefaultSetupCommand will return an exec.Cmd that joins the init process to set it up.
+//
+// console: the /dev/console to setup inside the container
+// init: the program executed inside the namespaces
+// root: the path to the container json file and information
+// args: the arguments to pass to the container to run as the user's program
+func DefaultSetupCommand(container *libcontainer.Config, console, dataPath, init string, args []string) *exec.Cmd {
+	// get our binary name from arg0 so we can always reexec ourself
+	env := []string{
+		"console=" + console,
+		"pipe=3",
+		"data_path=" + dataPath,
+	}
+
+	command := exec.Command(init, append([]string{"setup", "--"}, args...)...)
+	// make sure the process is executed inside the context of the rootfs
+	command.Dir = container.RootFs
+	command.Env = append(os.Environ(), env...)
+
+	return command
+}
+
 // SetupCgroups applies the cgroup restrictions to the process running in the container based
 // on the container's configuration
 func SetupCgroups(container *libcontainer.Config, nspid int) (cgroups.ActiveCgroup, error) {
@@ -183,7 +228,7 @@ func InitializeNetworking(container *libcontainer.Config, nspid int, pipe *syncp
 			return err
 		}
 	}
-	return pipe.SendToChild(networkState)
+	return nil
 }
 
 // GetNamespaceFlags parses the container's Namespaces options to set the correct
