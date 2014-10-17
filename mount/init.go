@@ -59,7 +59,7 @@ func InitializeMountNamespace(rootfs, console string, sysReadonly bool, mountCon
 	}
 
 	if err := SetupPtmx(rootfs, console, mountConfig.MountLabel); err != nil {
-		return err
+		return fmt.Errorf("setup ptmx %s", err)
 	}
 
 	// stdin, stdout and stderr could be pointing to /dev/null from parent namespace.

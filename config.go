@@ -65,6 +65,12 @@ type Config struct {
 	// RestrictSys will remount /proc/sys, /sys, and mask over sysrq-trigger as well as /proc/irq and
 	// /proc/bus
 	RestrictSys bool `json:"restrict_sys,omitempty"`
+
+	// UidMappings is an array of User ID mappings for User Namespaces
+	UidMappings []IDMap `json:"uid_mappings,omitempty"`
+
+	// GidMappings is an array of Group ID mappings for User Namespaces
+	GidMappings []IDMap `json:"gid_mappings,omitempty"`
 }
 
 // Routes can be specified to create entries in the route table as the container is started
@@ -86,4 +92,11 @@ type Route struct {
 
 	// The device to set this route up for, for example: eth0
 	InterfaceName string `json:"interface_name,omitempty"`
+}
+
+// IDMap represents UID/GID Mappings for User Namespaces.
+type IDMap struct {
+	ContainerID int `json:"container_id,omitempty"`
+	HostID      int `json:"host_id,omitempty"`
+	Size        int `json:"size,omitempty"`
 }
