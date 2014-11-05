@@ -93,7 +93,7 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	defer libcontainer.DeleteState(dataPath)
 
 	// Start the setup process to setup the init process
-	setupCmd := setupCommand(container, console, dataPath, os.Args[0], args)
+	setupCmd := setupCommand(container, console, dataPath, os.Args[0])
 	if err := setupCmd.Start(); err != nil {
 		command.Process.Kill()
 		command.Wait()
@@ -216,7 +216,7 @@ func DefaultCreateCommand(container *libcontainer.Config, console, dataPath, ini
 // init: the program executed inside the namespaces
 // root: the path to the container json file and information
 // args: the arguments to pass to the container to run as the user's program
-func DefaultSetupCommand(container *libcontainer.Config, console, dataPath, init string, args []string) *exec.Cmd {
+func DefaultSetupCommand(container *libcontainer.Config, console, dataPath, init string) *exec.Cmd {
 	// get our binary name from arg0 so we can always reexec ourself
 	env := []string{
 		"console=" + console,
@@ -224,7 +224,9 @@ func DefaultSetupCommand(container *libcontainer.Config, console, dataPath, init
 		"data_path=" + dataPath,
 	}
 
-	command := exec.Command(init, append([]string{"setup", "--"}, args...)...)
+	args := []string{console, dataPath}
+
+	command := exec.Command(init, append([]string{"exec", "--func", "setup", "--"}, args...)...)
 	// make sure the process is executed inside the context of the rootfs
 	command.Dir = container.RootFs
 	command.Env = append(os.Environ(), env...)

@@ -82,3 +82,9 @@ func nsenterIp(config *libcontainer.Config, args []string) {
 
 	w.Flush()
 }
+
+func nsenterSetup(config *libcontainer.Config, args []string) {
+	if err := namespaces.FinalizeSetns(config, args); err != nil {
+		log.Fatalf("failed to nsenter: %s", err)
+	}
+}

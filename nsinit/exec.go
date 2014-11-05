@@ -144,8 +144,8 @@ func startContainer(container *libcontainer.Config, dataPath string, args []stri
 		return cmd
 	}
 
-	setupCommand := func(container *libcontainer.Config, console, dataPath, init string, args []string) *exec.Cmd {
-		setupCmd = namespaces.DefaultSetupCommand(container, console, dataPath, init, args)
+	setupCommand := func(container *libcontainer.Config, console, dataPath, init string) *exec.Cmd {
+		setupCmd = namespaces.DefaultSetupCommand(container, console, dataPath, init)
 		if logPath != "" {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("log=%s", logPath))
 		}

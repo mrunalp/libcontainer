@@ -54,7 +54,7 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, syn
 	}
 
 	if consolePath != "" {
-		if err := console.OpenAndDup("/dev/console"); err != nil {
+		if err := console.OpenAndDup(consolePath); err != nil {
 			return err
 		}
 	}
