@@ -3,6 +3,7 @@
 package namespaces
 
 import (
+	"log"
 	"io"
 	"os"
 	"os/exec"
@@ -93,6 +94,7 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	defer libcontainer.DeleteState(dataPath)
 
 	// Start the setup process to setup the init process
+	log.Println("Starting setup")
 	setupCmd := setupCommand(container, console, dataPath, os.Args[0])
 	if err := setupCmd.Start(); err != nil {
 		command.Process.Kill()
@@ -100,6 +102,7 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 		return -1, err
 	}
 
+	log.Println("Waiting for setup")
 	if err := setupCmd.Wait(); err != nil {
 		if _, ok := err.(*exec.ExitError); !ok {
 			command.Process.Kill()
@@ -109,6 +112,7 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	}
 
 	// Send network data to child
+	log.Println("Sending network state to child")
 	if err := syncPipe.SendToChild(&networkState); err != nil {
 		command.Process.Kill()
 		command.Wait()
@@ -126,6 +130,7 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 		startCallback()
 	}
 
+	log.Println("Waiting for child")
 	if err := command.Wait(); err != nil {
 		if _, ok := err.(*exec.ExitError); !ok {
 			return -1, err
@@ -225,6 +230,11 @@ func DefaultSetupCommand(container *libcontainer.Config, console, dataPath, init
 	}
 
 	args := []string{console, dataPath}
+	log.Println("Console", console)
+	if dataPath == "" {
+		dataPath, _ = os.Getwd()
+	}
+	log.Println("DATAPATH", dataPath)
 
 	command := exec.Command(init, append([]string{"exec", "--func", "setup", "--"}, args...)...)
 	// make sure the process is executed inside the context of the rootfs

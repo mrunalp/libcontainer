@@ -4,6 +4,7 @@ package namespaces
 
 import (
 	"fmt"
+	"log"
 	"io"
 	"os"
 	"os/exec"
@@ -118,8 +119,16 @@ func FinalizeSetns(container *libcontainer.Config, args []string) error {
 }
 
 func SetupContainer(container *libcontainer.Config, args []string) error {
+	lfile, err := os.OpenFile("mlog.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalln("Failed to open log file: %v", err)
+	}
+	mLog := log.New(lfile, "SETUP: ", log.Ldate|log.Ltime|log.Lshortfile)
 	consolePath := args[0]
 	dataPath := args[1]
+
+	mLog.Println("Console", consolePath)
+	mLog.Println("dataPath", dataPath)
 
 	rootfs, err := utils.ResolveRootfs(container.RootFs)
 	if err != nil {
