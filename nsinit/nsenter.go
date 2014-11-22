@@ -85,6 +85,6 @@ func nsenterIp(config *libcontainer.Config, args []string) {
 
 func nsenterSetup(config *libcontainer.Config, args []string) {
 	if err := namespaces.SetupContainer(config, args); err != nil {
-		log.Fatalf("failed to nsenter: %s", err)
+		log.Fatalf("failed to nsenter setup: %s", err)
 	}
 }

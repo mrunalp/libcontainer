@@ -47,7 +47,7 @@ func ExecIn(container *libcontainer.Config, state *libcontainer.State, userArgs 
 
 	pipe, err := syncpipe.NewSyncPipe()
 	if err != nil {
-		return -1, err
+		return -1, fmt.Errorf("syncpipe: %v", err)
 	}
 	defer pipe.Close()
 
@@ -61,19 +61,19 @@ func ExecIn(container *libcontainer.Config, state *libcontainer.State, userArgs 
 	cmd.ExtraFiles = []*os.File{pipe.Child()}
 
 	if err := cmd.Start(); err != nil {
-		return -1, err
+		return -1, fmt.Errorf("cmd start: %v", err)
 	}
 	pipe.CloseChild()
 
 	// Enter cgroups.
 	if err := EnterCgroups(state, cmd.Process.Pid); err != nil {
-		return -1, err
+		return -1, fmt.Errorf("enter cgroups: %v", err)
 	}
 
 	if err := pipe.SendToChild(container); err != nil {
 		cmd.Process.Kill()
 		cmd.Wait()
-		return -1, err
+		return -1, fmt.Errorf("sendtochild: %v", err)
 	}
 
 	if startCallback != nil {
@@ -82,7 +82,7 @@ func ExecIn(container *libcontainer.Config, state *libcontainer.State, userArgs 
 
 	if err := cmd.Wait(); err != nil {
 		if _, ok := err.(*exec.ExitError); !ok {
-			return -1, err
+			return -1, fmt.Errorf("cmdwait: %v", err)
 		}
 	}
 
@@ -119,16 +119,16 @@ func FinalizeSetns(container *libcontainer.Config, args []string) error {
 }
 
 func SetupContainer(container *libcontainer.Config, args []string) error {
-	lfile, err := os.OpenFile("mlog.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalln("Failed to open log file: %v", err)
-	}
-	mLog := log.New(lfile, "SETUP: ", log.Ldate|log.Ltime|log.Lshortfile)
 	consolePath := args[0]
 	dataPath := args[1]
 
-	mLog.Println("Console", consolePath)
-	mLog.Println("dataPath", dataPath)
+	var err error
+
+	defer func() {
+		if err != nil {
+			fmt.Println("Setup failed: %v", err)
+		}
+	}()
 
 	rootfs, err := utils.ResolveRootfs(container.RootFs)
 	if err != nil {
@@ -147,10 +147,12 @@ func SetupContainer(container *libcontainer.Config, args []string) error {
 	}
 
 	if err := setupNetwork(container, &state.NetworkState); err != nil {
+		fmt.Println("networking issue: %v", err)
 		return fmt.Errorf("setup networking %s", err)
 	}
 
 	if err := setupRoute(container); err != nil {
+		fmt.Println("routing issue: %v", err)
 		return fmt.Errorf("setup route %s", err)
 	}
 
@@ -160,25 +162,30 @@ func SetupContainer(container *libcontainer.Config, args []string) error {
 		consolePath,
 		container.RestrictSys,
 		(*mount.MountConfig)(container.MountConfig)); err != nil {
+		fmt.Println("mounting issue: %v", err)
 		return fmt.Errorf("setup mount namespace %s", err)
 	}
 
 	if container.Hostname != "" {
 		if err := syscall.Sethostname([]byte(container.Hostname)); err != nil {
+		fmt.Println("hostname issue: %v", err)
 			return fmt.Errorf("sethostname %s", err)
 		}
 	}
 
 	if err := apparmor.ApplyProfile(container.AppArmorProfile); err != nil {
+		fmt.Println("apparmor issue: %v", err)
 		return fmt.Errorf("set apparmor profile %s: %s", container.AppArmorProfile, err)
 	}
 
 	if err := label.SetProcessLabel(container.ProcessLabel); err != nil {
+		fmt.Println("labeling issue: %v", err)
 		return fmt.Errorf("set process label %s", err)
 	}
 
 	// TODO: (crosbymichael) make this configurable at the Config level
 	if container.RestrictSys {
+		log.Println("restricting issue: %v", err)
 		if err := restrict.Restrict("proc/sys", "proc/sysrq-trigger", "proc/irq", "proc/bus"); err != nil {
 			return err
 		}

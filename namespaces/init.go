@@ -9,14 +9,14 @@ import (
 	"syscall"
 
 	"github.com/docker/libcontainer"
-	"github.com/docker/libcontainer/apparmor"
+	_ "github.com/docker/libcontainer/apparmor"
 	"github.com/docker/libcontainer/console"
-	"github.com/docker/libcontainer/label"
-	"github.com/docker/libcontainer/mount"
+	_ "github.com/docker/libcontainer/label"
+	_ "github.com/docker/libcontainer/mount"
 	"github.com/docker/libcontainer/netlink"
 	"github.com/docker/libcontainer/network"
 	"github.com/docker/libcontainer/security/capabilities"
-	"github.com/docker/libcontainer/security/restrict"
+	_ "github.com/docker/libcontainer/security/restrict"
 	"github.com/docker/libcontainer/syncpipe"
 	"github.com/docker/libcontainer/system"
 	"github.com/docker/libcontainer/user"
@@ -32,20 +32,28 @@ import (
 func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, syncPipe *syncpipe.SyncPipe, args []string) (err error) {
 	defer func() {
 		if err != nil {
-			syncPipe.ReportChildError(err)
+			syncPipe.ReportChildError(fmt.Errorf("Failed uid %v: %v",os.Getuid(), err))
 		}
 	}()
 
+/*
 	rootfs, err := utils.ResolveRootfs(uncleanRootfs)
 	if err != nil {
 		return err
 	}
+*/
+
+	fmt.Println("After cleaning rootfs")
 
 	// clear the current processes env and replace it with the environment
 	// defined on the container
+/*
 	if err := LoadContainerEnvironment(container); err != nil {
-		return err
+		return fmt.Errorf("Loadin env: %v", err)
 	}
+*/
+
+	fmt.Println("After loading environment")
 
 	// We always read this as it is a way to sync with the parent as well
 	var networkState *network.NetworkState
@@ -53,8 +61,10 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, syn
 		return err
 	}
 
+	fmt.Println("After reading network state")
+
 	if consolePath != "" {
-		if err := console.OpenAndDup(consolePath); err != nil {
+		if err := console.OpenAndDup("/dev/console"); err != nil {
 			return err
 		}
 	}
@@ -74,8 +84,13 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, syn
 	if err := syscall.Chdir(container.WorkingDir); err != nil {
 		return fmt.Errorf("chdir %s %s", container.WorkingDir, err)
 	}
+	if container.Hostname != "" {
+		if err := syscall.Sethostname([]byte(container.Hostname)); err != nil {
+			return fmt.Errorf("sethostname %s", err)
+		}
+	}
 	return system.Execv(args[0], args[0:], os.Environ())
-
+/*
 	if err := setupNetwork(container, networkState); err != nil {
 		return fmt.Errorf("setup networking %s", err)
 	}
@@ -92,11 +107,6 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, syn
 		return fmt.Errorf("setup mount namespace %s", err)
 	}
 
-	if container.Hostname != "" {
-		if err := syscall.Sethostname([]byte(container.Hostname)); err != nil {
-			return fmt.Errorf("sethostname %s", err)
-		}
-	}
 
 	if err := apparmor.ApplyProfile(container.AppArmorProfile); err != nil {
 		return fmt.Errorf("set apparmor profile %s: %s", container.AppArmorProfile, err)
@@ -129,6 +139,7 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, syn
 	}
 
 	return system.Execv(args[0], args[0:], os.Environ())
+*/
 }
 
 // RestoreParentDeathSignal sets the parent death signal to old.

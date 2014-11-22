@@ -60,7 +60,7 @@ func execAction(context *cli.Context) {
 	}
 
 	if err != nil {
-		log.Fatalf("failed to exec: %s", err)
+		log.Fatalf("failed to exec: %s %s", err, context.String("func"))
 	}
 
 	os.Exit(exitCode)
@@ -84,14 +84,14 @@ func startInExistingContainer(config *libcontainer.Config, state *libcontainer.S
 	)
 	signal.Notify(sigc)
 
-	if config.Tty {
+	if config.Tty && action != "setup" {
 		stdin = nil
 		stdout = nil
 		stderr = nil
 
 		master, console, err = consolepkg.CreateMasterAndConsole()
 		if err != nil {
-			return -1, err
+			return -1, fmt.Errorf("Failed to createmasterandconsole: %v", err)
 		}
 
 		go io.Copy(master, os.Stdin)
@@ -99,7 +99,7 @@ func startInExistingContainer(config *libcontainer.Config, state *libcontainer.S
 
 		state, err := term.SetRawTerminal(os.Stdin.Fd())
 		if err != nil {
-			return -1, err
+			return -1, fmt.Errorf("Failed to set raw terminal: %v", err)
 		}
 
 		defer term.RestoreTerminal(os.Stdin.Fd(), state)

@@ -3,6 +3,7 @@
 package namespaces
 
 import (
+	"io/ioutil"
 	"log"
 	"io"
 	"os"
@@ -35,6 +36,7 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	}
 	defer syncPipe.Close()
 
+	log.Println("Before create")
 	command := createCommand(container, console, dataPath, os.Args[0], syncPipe.Child(), args)
 	// Note: these are only used in non-tty mode
 	// if there is a tty for the container it will be opened within the namespace and the
@@ -43,6 +45,7 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	command.Stdout = stdout
 	command.Stderr = stderr
 
+	log.Println("Launching command")
 	if err := command.Start(); err != nil {
 		return -1, err
 	}
@@ -50,6 +53,7 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	// Now we passed the pipe to the child, close our side
 	syncPipe.CloseChild()
 
+	log.Println("Getting start time")
 	started, err := system.GetProcessStartTime(command.Process.Pid)
 	if err != nil {
 		return -1, err
@@ -57,6 +61,7 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 
 	// Do this before syncing with child so that no children
 	// can escape the cgroup
+	log.Println("Setting cgroups")
 	cgroupRef, err := SetupCgroups(container, command.Process.Pid)
 	if err != nil {
 		command.Process.Kill()
@@ -73,6 +78,7 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	}
 
 	var networkState network.NetworkState
+	log.Println("Setting up networking")
 	if err := InitializeNetworking(container, command.Process.Pid, syncPipe, &networkState); err != nil {
 		command.Process.Kill()
 		command.Wait()
@@ -86,6 +92,7 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 		CgroupPaths:   cgroupPaths,
 	}
 
+	log.Println("Saving state")
 	if err := libcontainer.SaveState(dataPath, state); err != nil {
 		command.Process.Kill()
 		command.Wait()
@@ -96,13 +103,17 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	// Start the setup process to setup the init process
 	log.Println("Starting setup")
 	setupCmd := setupCommand(container, console, dataPath, os.Args[0])
-	if err := setupCmd.Start(); err != nil {
+	setupOut, _ := setupCmd.StderrPipe()
+	err = setupCmd.Start()
+        if err != nil {
 		command.Process.Kill()
 		command.Wait()
+		log.Println("setup failed: %v", err)
 		return -1, err
 	}
+	out, _ := ioutil.ReadAll(setupOut)
+	log.Println("SETUP OUTPUT: %v", string(out))
 
-	log.Println("Waiting for setup")
 	if err := setupCmd.Wait(); err != nil {
 		if _, ok := err.(*exec.ExitError); !ok {
 			command.Process.Kill()
@@ -120,12 +131,15 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	}
 
 	// Sync with child
+	log.Println("Syncing with child")
 	if err := syncPipe.ReadFromChild(); err != nil {
 		command.Process.Kill()
 		command.Wait()
+		log.Println("Error from init 1: %v", err)
 		return -1, err
 	}
 
+	log.Println("starting callback")
 	if startCallback != nil {
 		startCallback()
 	}
@@ -134,6 +148,7 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	if err := command.Wait(); err != nil {
 		if _, ok := err.(*exec.ExitError); !ok {
 			return -1, err
+			log.Println("Error from init: %v", err)
 		}
 	}
 
@@ -229,14 +244,15 @@ func DefaultSetupCommand(container *libcontainer.Config, console, dataPath, init
 		"data_path=" + dataPath,
 	}
 
-	args := []string{console, dataPath}
 	log.Println("Console", console)
 	if dataPath == "" {
 		dataPath, _ = os.Getwd()
 	}
 	log.Println("DATAPATH", dataPath)
+	args := []string{console, dataPath}
 
 	command := exec.Command(init, append([]string{"exec", "--func", "setup", "--"}, args...)...)
+	log.Println("(%+v)", command)
 	// make sure the process is executed inside the context of the rootfs
 	command.Dir = container.RootFs
 	command.Env = append(os.Environ(), env...)
