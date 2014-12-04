@@ -4,7 +4,9 @@ package namespaces
 
 import (
 	"encoding/json"
+	"log"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"syscall"
@@ -21,7 +23,7 @@ import (
 // Move this to libcontainer package.
 // Exec performs setup outside of a namespace so that a container can be
 // executed.  Exec is a high level function for working with container namespaces.
-func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Writer, console, dataPath string, args []string, createCommand CreateCommand, startCallback func()) (int, error) {
+func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Writer, console, dataPath string, args []string, createCommand CreateCommand, setupCommand SetupCommand, startCallback func()) (int, error) {
 	var err error
 
 	// create a pipe so that we can syncronize with the namespaced process and
@@ -70,14 +72,6 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	if err := InitializeNetworking(container, command.Process.Pid, &networkState); err != nil {
 		return terminate(err)
 	}
-	// send the state to the container's init process then shutdown writes for the parent
-	if err := json.NewEncoder(parent).Encode(networkState); err != nil {
-		return terminate(err)
-	}
-	// shutdown writes for the parent side of the pipe
-	if err := syscall.Shutdown(int(parent.Fd()), syscall.SHUT_WR); err != nil {
-		return terminate(err)
-	}
 
 	state := &libcontainer.State{
 		InitPid:       command.Process.Pid,
@@ -90,6 +84,38 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 		return terminate(err)
 	}
 	defer libcontainer.DeleteState(dataPath)
+
+	// Start the setup process to setup the init process
+	log.Println("Starting setup")
+	setupCmd := setupCommand(container, console, dataPath, os.Args[0])
+	setupOut, _ := setupCmd.StderrPipe()
+	err = setupCmd.Start()
+        if err != nil {
+		command.Process.Kill()
+		command.Wait()
+		log.Println("setup failed: %v", err)
+		return -1, err
+	}
+	out, _ := ioutil.ReadAll(setupOut)
+	log.Println("SETUP OUTPUT: %v", string(out))
+
+	if err := setupCmd.Wait(); err != nil {
+		if _, ok := err.(*exec.ExitError); !ok {
+			command.Process.Kill()
+			command.Wait()
+			return -1, err
+		}
+	}
+	log.Println("Setup return code", setupCmd.ProcessState.Sys().(syscall.WaitStatus).ExitStatus())
+
+	// send the state to the container's init process then shutdown writes for the parent
+	if err := json.NewEncoder(parent).Encode(networkState); err != nil {
+		return terminate(err)
+	}
+	// shutdown writes for the parent side of the pipe
+	if err := syscall.Shutdown(int(parent.Fd()), syscall.SHUT_WR); err != nil {
+		return terminate(err)
+	}
 
 	// wait for the child process to fully complete and receive an error message
 	// if one was encoutered
@@ -111,6 +137,27 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 		}
 	}
 	return command.ProcessState.Sys().(syscall.WaitStatus).ExitStatus(), nil
+}
+
+// Converts IDMap to SysProcIDMap array and adds it to SysProcAttr.
+func AddUidGidMappings(sys *syscall.SysProcAttr, container *libcontainer.Config) {
+	if container.UidMappings != nil {
+		sys.UidMappings = make([]syscall.SysProcIDMap, len(container.UidMappings))
+		for i, um := range container.UidMappings {
+			sys.UidMappings[i].ContainerID = um.ContainerID
+			sys.UidMappings[i].HostID = um.HostID
+			sys.UidMappings[i].Size = um.Size
+		}
+	}
+
+	if container.GidMappings != nil {
+		sys.GidMappings = make([]syscall.SysProcIDMap, len(container.GidMappings))
+		for i, gm := range container.GidMappings {
+			sys.GidMappings[i].ContainerID = gm.ContainerID
+			sys.GidMappings[i].HostID = gm.HostID
+			sys.GidMappings[i].Size = gm.Size
+		}
+	}
 }
 
 // DefaultCreateCommand will return an exec.Cmd with the Cloneflags set to the proper namespaces
@@ -142,6 +189,49 @@ func DefaultCreateCommand(container *libcontainer.Config, console, dataPath, ini
 
 	command.SysProcAttr.Pdeathsig = syscall.SIGKILL
 	command.ExtraFiles = []*os.File{pipe}
+
+	for _, v := range container.Namespaces {
+		if v.Name == "NEWUSER" {
+			if container.UidMappings != nil || container.GidMappings != nil {
+				AddUidGidMappings(command.SysProcAttr, container)
+			}
+
+			// Default to root user when user namespaces are enabled.
+			if command.SysProcAttr.Credential == nil {
+				command.SysProcAttr.Credential = &syscall.Credential{}
+			}
+		}
+	}
+
+	return command
+}
+
+// DefaultSetupCommand will return an exec.Cmd that joins the init process to set it up.
+//
+// console: the /dev/console to setup inside the container
+// init: the program executed inside the namespaces
+// root: the path to the container json file and information
+// args: the arguments to pass to the container to run as the user's program
+func DefaultSetupCommand(container *libcontainer.Config, console, dataPath, init string) *exec.Cmd {
+	// get our binary name from arg0 so we can always reexec ourself
+	env := []string{
+		"console=" + console,
+		"data_path=" + dataPath,
+	}
+
+	log.Println("Console", console)
+	if dataPath == "" {
+		dataPath, _ = os.Getwd()
+	}
+	log.Println("DATAPATH", dataPath)
+	args := []string{console, dataPath}
+
+	command := exec.Command(init, append([]string{"exec", "--func", "setup", "--"}, args...)...)
+	log.Println("(%+v)", command)
+
+	// make sure the process is executed inside the context of the rootfs
+	command.Dir = container.RootFs
+	command.Env = append(os.Environ(), env...)
 
 	return command
 }
