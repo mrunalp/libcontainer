@@ -64,9 +64,11 @@ func InitializeMountNamespace(rootfs, console string, sysReadonly bool, mountCon
 
 	// stdin, stdout and stderr could be pointing to /dev/null from parent namespace.
 	// Re-open them inside this namespace.
+/*
 	if err := reOpenDevNull(rootfs); err != nil {
 		return fmt.Errorf("Failed to reopen /dev/null %s", err)
 	}
+*/
 
 	if err := setupDevSymlinks(rootfs); err != nil {
 		return fmt.Errorf("dev symlinks %s", err)

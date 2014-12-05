@@ -17,7 +17,7 @@ func PivotRoot(rootfs string) error {
 	}
 
 	if err := syscall.PivotRoot(rootfs, pivotDir); err != nil {
-		return fmt.Errorf("pivot_root %s", err)
+		return fmt.Errorf("pivot_root %s %s %s", err, rootfs, pivotDir)
 	}
 
 	if err := syscall.Chdir("/"); err != nil {

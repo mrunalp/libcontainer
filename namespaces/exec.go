@@ -42,8 +42,10 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	command.Stdout = stdout
 	command.Stderr = stderr
 
+	log.Println("Starting command")
 	if err := command.Start(); err != nil {
 		child.Close()
+		log.Println("Failed to launch command")
 		return -1, err
 	}
 	child.Close()
@@ -69,6 +71,7 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	defer cgroups.RemovePaths(cgroupPaths)
 
 	var networkState network.NetworkState
+	log.Println("Initialzing networking.")
 	if err := InitializeNetworking(container, command.Process.Pid, &networkState); err != nil {
 		return terminate(err)
 	}
@@ -80,6 +83,7 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 		CgroupPaths:   cgroupPaths,
 	}
 
+	log.Println("Saving state.")
 	if err := libcontainer.SaveState(dataPath, state); err != nil {
 		return terminate(err)
 	}
@@ -192,6 +196,7 @@ func DefaultCreateCommand(container *libcontainer.Config, console, dataPath, ini
 
 	for _, v := range container.Namespaces {
 		if v.Name == "NEWUSER" {
+			log.Println("Found user mappings.")
 			if container.UidMappings != nil || container.GidMappings != nil {
 				AddUidGidMappings(command.SysProcAttr, container)
 			}
@@ -224,12 +229,17 @@ func DefaultSetupCommand(container *libcontainer.Config, console, dataPath, init
 		dataPath, _ = os.Getwd()
 	}
 	log.Println("DATAPATH", dataPath)
-	args := []string{console, dataPath}
+
+	if container.RootFs == "" {
+		container.RootFs, _ = os.Getwd()
+	}
+	args := []string{dataPath, container.RootFs, console}
 
 	command := exec.Command(init, append([]string{"exec", "--func", "setup", "--"}, args...)...)
 	log.Println("(%+v)", command)
 
 	// make sure the process is executed inside the context of the rootfs
+	log.Println("ROOTFS: ", container.RootFs)
 	command.Dir = container.RootFs
 	command.Env = append(os.Environ(), env...)
 

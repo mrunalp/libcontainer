@@ -50,12 +50,12 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, pip
 		return err
 	}
 
+*/
 	// clear the current processes env and replace it with the environment
 	// defined on the container
 	if err := LoadContainerEnvironment(container); err != nil {
 		return err
 	}
-*/
 
 	// We always read this as it is a way to sync with the parent as well
 	var networkState *network.NetworkState

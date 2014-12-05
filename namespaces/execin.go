@@ -123,8 +123,12 @@ func FinalizeSetns(container *libcontainer.Config, args []string) error {
 }
 
 func SetupContainer(container *libcontainer.Config, args []string) error {
-	consolePath := args[0]
-	dataPath := args[1]
+	consolePath := ""
+	dataPath := args[0]
+	rootFs := args[1]
+	if len(args) > 2 {
+		consolePath = args[2]
+	}
 
 	var err error
 
@@ -134,7 +138,7 @@ func SetupContainer(container *libcontainer.Config, args []string) error {
 		}
 	}()
 
-	rootfs, err := utils.ResolveRootfs(container.RootFs)
+	rootfs, err := utils.ResolveRootfs(rootFs)
 	if err != nil {
 		return err
 	}
@@ -188,8 +192,8 @@ func SetupContainer(container *libcontainer.Config, args []string) error {
 	}
 
 	if container.RestrictSys {
-		log.Println("restricting issue: %v", err)
 		if err := restrict.Restrict("proc/sys", "proc/sysrq-trigger", "proc/irq", "proc/bus"); err != nil {
+			log.Println("restricting issue: %v", err)
 			return err
 		}
 	}
