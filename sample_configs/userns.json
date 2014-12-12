@@ -205,13 +205,23 @@
             "type": "veth"
         }
     ],
-    "tty": false,
+    "tty": true,
     "user": "daemon",
     "uid_mappings": [
         {
             "container_id": 0,
             "host_id": 1000,
             "size": 1
+        },
+        {
+            "container_id": 1,
+            "host_id": 1,
+            "size": 999
+        },
+        {
+            "container_id": 1001,
+            "host_id": 1001,
+            "size": 9000
         }
      ],
     "gid_mappings": [
@@ -219,6 +229,23 @@
             "container_id": 0,
             "host_id": 1000,
             "size": 1
+        },
+        {
+            "container_id": 1,
+            "host_id": 1,
+            "size": 999
+        },
+        {
+            "container_id": 1001,
+            "host_id": 1001,
+            "size": 9000
+        }
+     ],
+     "rlimits": [
+        {
+            "type": 7,
+            "hard": 999,
+            "soft": 999
         }
      ]
 }
