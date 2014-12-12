@@ -44,13 +44,6 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, pip
 		pipe.Close()
 	}()
 
-/*
-	rootfs, err := utils.ResolveRootfs(uncleanRootfs)
-	if err != nil {
-		return err
-	}
-
-*/
 	// clear the current processes env and replace it with the environment
 	// defined on the container
 	if err := LoadContainerEnvironment(container); err != nil {
@@ -84,9 +77,6 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, pip
 		container.WorkingDir = "/"
 	}
 
-	if err := syscall.Chdir(container.WorkingDir); err != nil {
-		return fmt.Errorf("chdir %s %s", container.WorkingDir, err)
-	}
 	if container.Hostname != "" {
 		if err := syscall.Sethostname([]byte(container.Hostname)); err != nil {
 			return fmt.Errorf("sethostname %s", err)
@@ -135,6 +125,11 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, pip
 		}
 	}
 
+*/
+	if err := setupRlimits(container); err != nil {
+		return fmt.Errorf("setup rlimits %s", err)
+	}
+
 	pdeathSignal, err := system.GetParentDeathSignal()
 	if err != nil {
 		return fmt.Errorf("get parent death signal %s", err)
@@ -149,7 +144,6 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, pip
 	if err := RestoreParentDeathSignal(pdeathSignal); err != nil {
 		return fmt.Errorf("restore parent death signal %s", err)
 	}
-*/
 
 	return system.Execv(args[0], args[0:], os.Environ())
 }
