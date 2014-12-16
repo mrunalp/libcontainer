@@ -174,13 +174,6 @@ func SetupContainer(container *libcontainer.Config, args []string) error {
 		return fmt.Errorf("setup mount namespace %s", err)
 	}
 
-	if container.Hostname != "" {
-		if err := syscall.Sethostname([]byte(container.Hostname)); err != nil {
-		fmt.Println("hostname issue: %v", err)
-			return fmt.Errorf("sethostname %s", err)
-		}
-	}
-
 	if err := apparmor.ApplyProfile(container.AppArmorProfile); err != nil {
 		fmt.Println("apparmor issue: %v", err)
 		return fmt.Errorf("set apparmor profile %s: %s", container.AppArmorProfile, err)

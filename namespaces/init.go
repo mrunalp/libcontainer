@@ -91,10 +91,6 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, pip
 		return fmt.Errorf("setup route %s", err)
 	}
 
-	if err := setupRlimits(container); err != nil {
-		return fmt.Errorf("setup rlimits %s", err)
-	}
-
 	label.Init()
 
 	if err := mount.InitializeMountNamespace(rootfs,
@@ -102,12 +98,6 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, pip
 		container.RestrictSys,
 		(*mount.MountConfig)(container.MountConfig)); err != nil {
 		return fmt.Errorf("setup mount namespace %s", err)
-	}
-
-	if container.Hostname != "" {
-		if err := syscall.Sethostname([]byte(container.Hostname)); err != nil {
-			return fmt.Errorf("unable to sethostname %q: %s", container.Hostname, err)
-		}
 	}
 
 	if err := apparmor.ApplyProfile(container.AppArmorProfile); err != nil {
@@ -124,8 +114,8 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, pip
 			return err
 		}
 	}
-
 */
+
 	if err := setupRlimits(container); err != nil {
 		return fmt.Errorf("setup rlimits %s", err)
 	}
