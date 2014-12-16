@@ -4,6 +4,7 @@ package namespaces
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"io"
 	"io/ioutil"
@@ -26,6 +27,11 @@ import (
 func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Writer, console, dataPath string, args []string, createCommand CreateCommand, setupCommand SetupCommand, startCallback func()) (int, error) {
 	var err error
 
+	hostRootUid, err := GetHostRootUid(container)
+	if err != nil {
+		return -1, err
+	}
+
 	// create a pipe so that we can syncronize with the namespaced process and
 	// pass the state and configuration to the child process
 	parent, child, err := newInitPipe()
@@ -42,6 +48,7 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	command.Stdout = stdout
 	command.Stderr = stderr
 
+	log.Println("Host Root Uid: ", hostRootUid)
 	log.Println("Starting command")
 	if err := command.Start(); err != nil {
 		child.Close()
@@ -141,6 +148,40 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 		}
 	}
 	return command.ProcessState.Sys().(syscall.WaitStatus).ExitStatus(), nil
+}
+
+// Utility function that gets a host ID for a container ID from user namespace map
+// if that ID is present in the map.
+func hostIDFromMapping(containerID int, uMap []libcontainer.IDMap) (int, bool) {
+	for _, m := range uMap {
+		if (containerID >= m.ContainerID) && (containerID <= (m.ContainerID + m.Size - 1)) {
+			hostID := m.HostID + (containerID - m.ContainerID)
+			return hostID, true
+		}
+	}
+	return -1, false
+}
+
+// Gets the root uid for the process on host which could be non-zero
+// when user namespaces are enabled.
+func GetHostRootUid(container *libcontainer.Config) (int, error) {
+	hostRootUid := 0
+	for _, v := range container.Namespaces {
+		if v.Name == "NEWUSER" {
+			log.Println("Found user mappings.")
+			if container.UidMappings == nil {
+				return -1, fmt.Errorf("User namespaces enabled, but no user mappings found.")
+			}
+			hostRootUid, found := hostIDFromMapping(0, container.UidMappings)
+			if !found {
+				return -1, fmt.Errorf("User namespaces enabled, but no root user mapping found.")
+			} else {
+				return hostRootUid, nil
+			}
+		}
+	}
+
+	return hostRootUid, nil
 }
 
 // Converts IDMap to SysProcIDMap array and adds it to SysProcAttr.
