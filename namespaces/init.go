@@ -11,14 +11,10 @@ import (
 	"syscall"
 
 	"github.com/docker/libcontainer"
-	"github.com/docker/libcontainer/apparmor"
 	"github.com/docker/libcontainer/console"
-	"github.com/docker/libcontainer/label"
-	"github.com/docker/libcontainer/mount"
 	"github.com/docker/libcontainer/netlink"
 	"github.com/docker/libcontainer/network"
 	"github.com/docker/libcontainer/security/capabilities"
-	"github.com/docker/libcontainer/security/restrict"
 	"github.com/docker/libcontainer/system"
 	"github.com/docker/libcontainer/user"
 	"github.com/docker/libcontainer/utils"
@@ -48,11 +44,6 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, pip
 		pipe.Close()
 	}()
 
-	rootfs, err := utils.ResolveRootfs(uncleanRootfs)
-	if err != nil {
-		return err
-	}
-
 	// clear the current processes env and replace it with the environment
 	// defined on the container
 	if err := LoadContainerEnvironment(container); err != nil {
@@ -69,7 +60,7 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, pip
 		return err
 	}
 	if consolePath != "" {
-		if err := console.OpenAndDup(consolePath); err != nil {
+		if err := console.OpenAndDup("/dev/console"); err != nil {
 			return err
 		}
 	}
@@ -82,45 +73,18 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, pip
 		}
 	}
 
-	if err := setupNetwork(container, networkState); err != nil {
-		return fmt.Errorf("setup networking %s", err)
-	}
-	if err := setupRoute(container); err != nil {
-		return fmt.Errorf("setup route %s", err)
-	}
-
-	if err := setupRlimits(container); err != nil {
-		return fmt.Errorf("setup rlimits %s", err)
-	}
-
-	label.Init()
-
-	if err := mount.InitializeMountNamespace(rootfs,
-		consolePath,
-		container.RestrictSys,
-		(*mount.MountConfig)(container.MountConfig)); err != nil {
-		return fmt.Errorf("setup mount namespace %s", err)
+	if container.WorkingDir == "" {
+		container.WorkingDir = "/"
 	}
 
 	if container.Hostname != "" {
 		if err := syscall.Sethostname([]byte(container.Hostname)); err != nil {
-			return fmt.Errorf("unable to sethostname %q: %s", container.Hostname, err)
+			return fmt.Errorf("sethostname %s", err)
 		}
 	}
 
-	if err := apparmor.ApplyProfile(container.AppArmorProfile); err != nil {
-		return fmt.Errorf("set apparmor profile %s: %s", container.AppArmorProfile, err)
-	}
-
-	if err := label.SetProcessLabel(container.ProcessLabel); err != nil {
-		return fmt.Errorf("set process label %s", err)
-	}
-
-	// TODO: (crosbymichael) make this configurable at the Config level
-	if container.RestrictSys {
-		if err := restrict.Restrict("proc/sys", "proc/sysrq-trigger", "proc/irq", "proc/bus"); err != nil {
-			return err
-		}
+	if err := setupRlimits(container); err != nil {
+		return fmt.Errorf("setup rlimits %s", err)
 	}
 
 	pdeathSignal, err := system.GetParentDeathSignal()

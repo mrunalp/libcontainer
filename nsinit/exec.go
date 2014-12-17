@@ -60,7 +60,7 @@ func execAction(context *cli.Context) {
 	}
 
 	if err != nil {
-		log.Fatalf("failed to exec: %s", err)
+		log.Fatalf("failed to exec: %s %s", err, state)
 	}
 
 	os.Exit(exitCode)
@@ -97,12 +97,14 @@ func startInExistingContainer(config *libcontainer.Config, state *libcontainer.S
 		go io.Copy(master, os.Stdin)
 		go io.Copy(os.Stdout, master)
 
-		state, err := term.SetRawTerminal(os.Stdin.Fd())
-		if err != nil {
-			return -1, err
-		}
+		/*
+			state, err := term.SetRawTerminal(os.Stdin.Fd())
+			if err != nil {
+				return -1, err
+			}
 
-		defer term.RestoreTerminal(os.Stdin.Fd(), state)
+			defer term.RestoreTerminal(os.Stdin.Fd(), state)
+		*/
 	}
 
 	startCallback := func(cmd *exec.Cmd) {
@@ -129,8 +131,9 @@ func startInExistingContainer(config *libcontainer.Config, state *libcontainer.S
 // Signals sent to the current process will be forwarded to container.
 func startContainer(container *libcontainer.Config, dataPath string, args []string) (int, error) {
 	var (
-		cmd  *exec.Cmd
-		sigc = make(chan os.Signal, 10)
+		cmd      *exec.Cmd
+		setupCmd *exec.Cmd
+		sigc     = make(chan os.Signal, 10)
 	)
 
 	signal.Notify(sigc)
@@ -141,6 +144,14 @@ func startContainer(container *libcontainer.Config, dataPath string, args []stri
 			cmd.Env = append(cmd.Env, fmt.Sprintf("log=%s", logPath))
 		}
 		return cmd
+	}
+
+	setupCommand := func(container *libcontainer.Config, console, dataPath, init string) *exec.Cmd {
+		setupCmd = namespaces.DefaultSetupCommand(container, console, dataPath, init)
+		if logPath != "" {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("log=%s", logPath))
+		}
+		return setupCmd
 	}
 
 	var (
@@ -189,7 +200,7 @@ func startContainer(container *libcontainer.Config, dataPath string, args []stri
 		}()
 	}
 
-	return namespaces.Exec(container, stdin, stdout, stderr, console, dataPath, args, createCommand, startCallback)
+	return namespaces.Exec(container, stdin, stdout, stderr, console, dataPath, args, createCommand, setupCommand, startCallback)
 }
 
 func resizeTty(master *os.File) {

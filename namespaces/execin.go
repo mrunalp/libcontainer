@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,7 +17,10 @@ import (
 	"github.com/docker/libcontainer/apparmor"
 	"github.com/docker/libcontainer/cgroups"
 	"github.com/docker/libcontainer/label"
+	"github.com/docker/libcontainer/mount"
+	"github.com/docker/libcontainer/security/restrict"
 	"github.com/docker/libcontainer/system"
+	"github.com/docker/libcontainer/utils"
 )
 
 // ExecIn reexec's the initPath with the argv 0 rewrite to "nsenter" so that it is able to run the
@@ -120,6 +124,84 @@ func FinalizeSetns(container *libcontainer.Config, args []string) error {
 	}
 
 	panic("unreachable")
+}
+
+func SetupContainer(container *libcontainer.Config, args []string) error {
+	consolePath := ""
+	dataPath := args[0]
+	rootFs := args[1]
+	if len(args) > 2 {
+		consolePath = args[2]
+	}
+
+	var err error
+
+	defer func() {
+		if err != nil {
+			fmt.Println("Setup failed: %v", err)
+		}
+	}()
+
+	rootfs, err := utils.ResolveRootfs(rootFs)
+	if err != nil {
+		return err
+	}
+
+	// clear the current processes env and replace it with the environment
+	// defined on the container
+	if err := LoadContainerEnvironment(container); err != nil {
+		return err
+	}
+
+	state, err := libcontainer.GetState(dataPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("unable to read state.json %s", err)
+	}
+
+	if err := setupNetwork(container, &state.NetworkState); err != nil {
+		fmt.Println("networking issue: %v", err)
+		return fmt.Errorf("setup networking %s", err)
+	}
+
+	if err := setupRoute(container); err != nil {
+		fmt.Println("routing issue: %v", err)
+		return fmt.Errorf("setup route %s", err)
+	}
+
+	label.Init()
+
+	hostRootUid, err := GetHostRootUid(container)
+	if err != nil {
+		return fmt.Errorf("Failed to find hostRootUid")
+	}
+
+	if err := mount.InitializeMountNamespace(rootfs,
+		consolePath,
+		container.RestrictSys,
+		hostRootUid,
+		(*mount.MountConfig)(container.MountConfig)); err != nil {
+		fmt.Println("mounting issue: %v", err)
+		return fmt.Errorf("setup mount namespace %s", err)
+	}
+
+	if err := apparmor.ApplyProfile(container.AppArmorProfile); err != nil {
+		fmt.Println("apparmor issue: %v", err)
+		return fmt.Errorf("set apparmor profile %s: %s", container.AppArmorProfile, err)
+	}
+
+	if err := label.SetProcessLabel(container.ProcessLabel); err != nil {
+		fmt.Println("labeling issue: %v", err)
+		return fmt.Errorf("set process label %s", err)
+	}
+
+	if container.RestrictSys {
+		if err := restrict.Restrict("proc/sys", "proc/sysrq-trigger", "proc/irq", "proc/bus"); err != nil {
+			log.Println("restricting issue: %v", err)
+			return err
+		}
+	}
+
+	return nil
 }
 
 func EnterCgroups(state *libcontainer.State, pid int) error {
