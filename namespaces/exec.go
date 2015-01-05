@@ -210,17 +210,15 @@ func hostIDFromMapping(containerID int, uMap []libcontainer.IDMap) (int, bool) {
 // when user namespaces are enabled.
 func GetHostRootUid(container *libcontainer.Config) (int, error) {
 	hostRootUid := 0
-	for _, v := range container.Namespaces {
-		if v.Name == "NEWUSER" {
-			if container.UidMappings == nil {
-				return -1, fmt.Errorf("User namespaces enabled, but no user mappings found.")
-			}
-			hostRootUid, found := hostIDFromMapping(0, container.UidMappings)
-			if !found {
-				return -1, fmt.Errorf("User namespaces enabled, but no root user mapping found.")
-			} else {
-				return hostRootUid, nil
-			}
+	if container.Namespaces.Contains(libcontainer.NEWUSER) {
+		if container.UidMappings == nil {
+			return -1, fmt.Errorf("User namespaces enabled, but no user mappings found.")
+		}
+		hostRootUid, found := hostIDFromMapping(0, container.UidMappings)
+		if !found {
+			return -1, fmt.Errorf("User namespaces enabled, but no root user mapping found.")
+		} else {
+			return hostRootUid, nil
 		}
 	}
 
@@ -278,16 +276,14 @@ func DefaultCreateCommand(container *libcontainer.Config, console, dataPath, ini
 	command.SysProcAttr.Pdeathsig = syscall.SIGKILL
 	command.ExtraFiles = []*os.File{pipe}
 
-	for _, v := range container.Namespaces {
-		if v.Name == "NEWUSER" {
-			if container.UidMappings != nil || container.GidMappings != nil {
-				AddUidGidMappings(command.SysProcAttr, container)
-			}
+	if container.Namespaces.Contains(libcontainer.NEWUSER) {
+		if container.UidMappings != nil || container.GidMappings != nil {
+			AddUidGidMappings(command.SysProcAttr, container)
+		}
 
-			// Default to root user when user namespaces are enabled.
-			if command.SysProcAttr.Credential == nil {
-				command.SysProcAttr.Credential = &syscall.Credential{}
-			}
+		// Default to root user when user namespaces are enabled.
+		if command.SysProcAttr.Credential == nil {
+			command.SysProcAttr.Credential = &syscall.Credential{}
 		}
 	}
 
