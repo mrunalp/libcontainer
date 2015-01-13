@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,7 +17,6 @@ import (
 	"github.com/docker/libcontainer/cgroups"
 	"github.com/docker/libcontainer/label"
 	"github.com/docker/libcontainer/mount"
-	"github.com/docker/libcontainer/security/restrict"
 	"github.com/docker/libcontainer/system"
 	"github.com/docker/libcontainer/utils"
 )
@@ -126,6 +124,12 @@ func FinalizeSetns(container *libcontainer.Config, args []string) error {
 	panic("unreachable")
 }
 
+// SetupContainer is run to setup mounts and networking related operations
+// for a user namespace enabled process as a user namespace root doesn't
+// have permissions to perform these operations.
+// The setup process joins all the namespaces of user namespace enabled init
+// except the user namespace, so it run as root in the root user namespace
+// to perform these operations.
 func SetupContainer(container *libcontainer.Config, args []string) error {
 	consolePath := ""
 	dataPath := args[0]
@@ -182,23 +186,6 @@ func SetupContainer(container *libcontainer.Config, args []string) error {
 		(*mount.MountConfig)(container.MountConfig)); err != nil {
 		fmt.Println("mounting issue: %v", err)
 		return fmt.Errorf("setup mount namespace %s", err)
-	}
-
-	if err := apparmor.ApplyProfile(container.AppArmorProfile); err != nil {
-		fmt.Println("apparmor issue: %v", err)
-		return fmt.Errorf("set apparmor profile %s: %s", container.AppArmorProfile, err)
-	}
-
-	if err := label.SetProcessLabel(container.ProcessLabel); err != nil {
-		fmt.Println("labeling issue: %v", err)
-		return fmt.Errorf("set process label %s", err)
-	}
-
-	if container.RestrictSys {
-		if err := restrict.Restrict("proc/sys", "proc/sysrq-trigger", "proc/irq", "proc/bus"); err != nil {
-			log.Println("restricting issue: %v", err)
-			return err
-		}
 	}
 
 	return nil

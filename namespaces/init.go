@@ -11,10 +11,13 @@ import (
 	"syscall"
 
 	"github.com/docker/libcontainer"
+	"github.com/docker/libcontainer/apparmor"
 	"github.com/docker/libcontainer/console"
+	"github.com/docker/libcontainer/label"
 	"github.com/docker/libcontainer/netlink"
 	"github.com/docker/libcontainer/network"
 	"github.com/docker/libcontainer/security/capabilities"
+	"github.com/docker/libcontainer/security/restrict"
 	"github.com/docker/libcontainer/system"
 	"github.com/docker/libcontainer/user"
 	"github.com/docker/libcontainer/utils"
@@ -85,6 +88,23 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, pip
 
 	if err := setupRlimits(container); err != nil {
 		return fmt.Errorf("setup rlimits %s", err)
+	}
+
+	if err := apparmor.ApplyProfile(container.AppArmorProfile); err != nil {
+		fmt.Println("apparmor issue: %v", err)
+		return fmt.Errorf("set apparmor profile %s: %s", container.AppArmorProfile, err)
+	}
+
+	if err := label.SetProcessLabel(container.ProcessLabel); err != nil {
+		fmt.Println("labeling issue: %v", err)
+		return fmt.Errorf("set process label %s", err)
+	}
+
+	if container.RestrictSys {
+		if err := restrict.Restrict("proc/sys", "proc/sysrq-trigger", "proc/irq", "proc/bus"); err != nil {
+			fmt.Println("restricting issue: %v", err)
+			return err
+		}
 	}
 
 	pdeathSignal, err := system.GetParentDeathSignal()
