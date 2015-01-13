@@ -157,6 +157,27 @@ func killAllPids(container *libcontainer.Config) error {
 	return err
 }
 
+// Converts IDMap to SysProcIDMap array and adds it to SysProcAttr.
+func AddUidGidMappings(sys *syscall.SysProcAttr, container *libcontainer.Config) {
+	if container.UidMappings != nil {
+		sys.UidMappings = make([]syscall.SysProcIDMap, len(container.UidMappings))
+		for i, um := range container.UidMappings {
+			sys.UidMappings[i].ContainerID = um.ContainerID
+			sys.UidMappings[i].HostID = um.HostID
+			sys.UidMappings[i].Size = um.Size
+		}
+	}
+
+	if container.GidMappings != nil {
+		sys.GidMappings = make([]syscall.SysProcIDMap, len(container.GidMappings))
+		for i, gm := range container.GidMappings {
+			sys.GidMappings[i].ContainerID = gm.ContainerID
+			sys.GidMappings[i].HostID = gm.HostID
+			sys.GidMappings[i].Size = gm.Size
+		}
+	}
+}
+
 // DefaultCreateCommand will return an exec.Cmd with the Cloneflags set to the proper namespaces
 // defined on the container's configuration and use the current binary as the init with the
 // args provided
@@ -186,6 +207,17 @@ func DefaultCreateCommand(container *libcontainer.Config, console, dataPath, ini
 
 	command.SysProcAttr.Pdeathsig = syscall.SIGKILL
 	command.ExtraFiles = []*os.File{pipe}
+
+	if container.Namespaces.Contains(libcontainer.NEWUSER) {
+		if container.UidMappings != nil || container.GidMappings != nil {
+			AddUidGidMappings(command.SysProcAttr, container)
+		}
+
+		// Default to root user when user namespaces are enabled.
+		if command.SysProcAttr.Credential == nil {
+			command.SysProcAttr.Credential = &syscall.Credential{}
+		}
+	}
 
 	return command
 }
