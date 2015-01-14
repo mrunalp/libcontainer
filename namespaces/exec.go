@@ -4,6 +4,7 @@ package namespaces
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -50,37 +51,39 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	}
 	child.Close()
 
-	terminate := func(terr error) (int, error) {
+	terminate := func(msg string, terr error) (int, error) {
 		// TODO: log the errors for kill and wait
 		command.Process.Kill()
 		command.Wait()
-		return -1, terr
+		fmt.Printf("%v: %v", msg, terr)
+		return -1, fmt.Errorf("%v: %v", msg, terr)
 	}
 
 	started, err := system.GetProcessStartTime(command.Process.Pid)
 	if err != nil {
-		return terminate(err)
+		fmt.Println("get process time", err)
+		return terminate("get process time", err)
 	}
 
 	// Do this before syncing with child so that no children
 	// can escape the cgroup
 	cgroupPaths, err := SetupCgroups(container, command.Process.Pid)
 	if err != nil {
-		return terminate(err)
+		return terminate("setup cgroups", err)
 	}
 	defer cgroups.RemovePaths(cgroupPaths)
 
 	var networkState network.NetworkState
 	if err := InitializeNetworking(container, command.Process.Pid, &networkState); err != nil {
-		return terminate(err)
+		return terminate("initialize networking", err)
 	}
 	// send the state to the container's init process then shutdown writes for the parent
 	if err := json.NewEncoder(parent).Encode(networkState); err != nil {
-		return terminate(err)
+		return terminate("json encoding", err)
 	}
 	// shutdown writes for the parent side of the pipe
 	if err := syscall.Shutdown(int(parent.Fd()), syscall.SHUT_WR); err != nil {
-		return terminate(err)
+		return terminate("parent socketpair shutdown", err)
 	}
 
 	state := &libcontainer.State{
@@ -91,7 +94,7 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	}
 
 	if err := libcontainer.SaveState(dataPath, state); err != nil {
-		return terminate(err)
+		return terminate("save state", err)
 	}
 	defer libcontainer.DeleteState(dataPath)
 
@@ -99,10 +102,10 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	// if one was encoutered
 	var ierr *initError
 	if err := json.NewDecoder(parent).Decode(&ierr); err != nil && err != io.EOF {
-		return terminate(err)
+		return terminate("json decode", err)
 	}
 	if ierr != nil {
-		return terminate(ierr)
+		return terminate("init error", ierr)
 	}
 
 	if startCallback != nil {

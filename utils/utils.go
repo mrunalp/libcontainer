@@ -3,6 +3,7 @@ package utils
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"path/filepath"
@@ -25,9 +26,10 @@ func GenerateRandomName(prefix string, size int) (string, error) {
 func ResolveRootfs(uncleanRootfs string) (string, error) {
 	rootfs, err := filepath.Abs(uncleanRootfs)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("filepath abs: %v", err)
 	}
-	return filepath.EvalSymlinks(rootfs)
+	str, err := filepath.EvalSymlinks(rootfs)
+	return str, fmt.Errorf("filepath evalsymlinks: %v", err)
 }
 
 func CloseExecFrom(minFd int) error {

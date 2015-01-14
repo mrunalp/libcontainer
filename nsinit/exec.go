@@ -189,7 +189,8 @@ func startContainer(container *libcontainer.Config, dataPath string, args []stri
 		}()
 	}
 
-	return namespaces.Exec(container, stdin, stdout, stderr, console, dataPath, args, createCommand, startCallback)
+	rc, err := namespaces.Exec(container, stdin, stdout, stderr, console, dataPath, args, createCommand, startCallback)
+	return rc, fmt.Errorf("namespace exec: %v", err)
 }
 
 func resizeTty(master *os.File) {

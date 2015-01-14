@@ -21,7 +21,7 @@ func Setup(rootfs, consolePath, mountLabel string) error {
 		return err
 	}
 
-	if err := os.Chown(consolePath, 0, 0); err != nil {
+	if err := os.Chown(consolePath, 1000, 1000); err != nil {
 		return err
 	}
 

@@ -48,15 +48,18 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, pip
 		pipe.Close()
 	}()
 
+/*
 	rootfs, err := utils.ResolveRootfs(uncleanRootfs)
 	if err != nil {
-		return err
+		return fmt.Errorf("resolve rootfs: %v %v", err, uncleanRootfs)
 	}
+*/
+	rootfs := uncleanRootfs
 
 	// clear the current processes env and replace it with the environment
 	// defined on the container
 	if err := LoadContainerEnvironment(container); err != nil {
-		return err
+		return fmt.Errorf("Load container env failed: %v", err)
 	}
 
 	// We always read this as it is a way to sync with the parent as well
@@ -68,9 +71,17 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, pip
 	if err := joinExistingNamespaces(container.Namespaces); err != nil {
 		return err
 	}
+
+	if err := mount.InitializeMountNamespace(rootfs,
+		consolePath,
+		container.RestrictSys,
+		(*mount.MountConfig)(container.MountConfig)); err != nil {
+		return fmt.Errorf("setup mount namespace %s", err)
+	}
+
 	if consolePath != "" {
 		if err := console.OpenAndDup(consolePath); err != nil {
-			return err
+			return fmt.Errorf("console setup: %v", err)
 		}
 	}
 	if _, err := syscall.Setsid(); err != nil {
@@ -95,12 +106,14 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, pip
 
 	label.Init()
 
+/*
 	if err := mount.InitializeMountNamespace(rootfs,
 		consolePath,
 		container.RestrictSys,
 		(*mount.MountConfig)(container.MountConfig)); err != nil {
 		return fmt.Errorf("setup mount namespace %s", err)
 	}
+*/
 
 	if container.Hostname != "" {
 		if err := syscall.Sethostname([]byte(container.Hostname)); err != nil {
