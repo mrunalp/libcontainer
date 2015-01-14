@@ -101,27 +101,29 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	defer libcontainer.DeleteState(dataPath)
 
 	// Start the setup process to setup the init process
-	log.Println("Starting setup")
-	setupCmd := setupCommand(container, console, dataPath, os.Args[0])
-	setupOut, _ := setupCmd.StderrPipe()
-	err = setupCmd.Start()
-	if err != nil {
-		command.Process.Kill()
-		command.Wait()
-		log.Println("setup failed: %v", err)
-		return -1, err
-	}
-	out, _ := ioutil.ReadAll(setupOut)
-	log.Println("Setup output: ", string(out))
-
-	if err := setupCmd.Wait(); err != nil {
-		if _, ok := err.(*exec.ExitError); !ok {
+	if container.Namespaces.Contains(libcontainer.NEWUSER) {
+		log.Println("Starting setup")
+		setupCmd := setupCommand(container, console, dataPath, os.Args[0])
+		setupOut, _ := setupCmd.StderrPipe()
+		err = setupCmd.Start()
+		if err != nil {
 			command.Process.Kill()
 			command.Wait()
+			log.Println("setup failed: %v", err)
 			return -1, err
 		}
+		out, _ := ioutil.ReadAll(setupOut)
+		log.Println("Setup output: ", string(out))
+
+		if err := setupCmd.Wait(); err != nil {
+			if _, ok := err.(*exec.ExitError); !ok {
+				command.Process.Kill()
+				command.Wait()
+				return -1, err
+			}
+		}
+		log.Println("Setup return code", setupCmd.ProcessState.Sys().(syscall.WaitStatus).ExitStatus())
 	}
-	log.Println("Setup return code", setupCmd.ProcessState.Sys().(syscall.WaitStatus).ExitStatus())
 
 	// send the state to the container's init process then shutdown writes for the parent
 	if err := json.NewEncoder(parent).Encode(networkState); err != nil {
