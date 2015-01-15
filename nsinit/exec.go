@@ -84,7 +84,7 @@ func startInExistingContainer(config *libcontainer.Config, state *libcontainer.S
 	)
 	signal.Notify(sigc)
 
-	if config.Tty {
+	if config.Tty && action != "setup" {
 		stdin = nil
 		stdout = nil
 		stderr = nil
@@ -97,14 +97,12 @@ func startInExistingContainer(config *libcontainer.Config, state *libcontainer.S
 		go io.Copy(master, os.Stdin)
 		go io.Copy(os.Stdout, master)
 
-		/*
-			state, err := term.SetRawTerminal(os.Stdin.Fd())
-			if err != nil {
-				return -1, err
-			}
+		state, err := term.SetRawTerminal(os.Stdin.Fd())
+		if err != nil {
+			return -1, err
+		}
 
-			defer term.RestoreTerminal(os.Stdin.Fd(), state)
-		*/
+		defer term.RestoreTerminal(os.Stdin.Fd(), state)
 	}
 
 	startCallback := func(cmd *exec.Cmd) {
