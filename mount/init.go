@@ -25,7 +25,7 @@ type mount struct {
 
 // InitializeMountNamespace sets up the devices, mount points, and filesystems for use inside a
 // new mount namespace.
-func InitializeMountNamespace(rootfs, console string, sysReadonly bool, hostRootUid int, mountConfig *MountConfig) error {
+func InitializeMountNamespace(rootfs, console string, sysReadonly bool, hostRootUid, hostRootGid int, mountConfig *MountConfig) error {
 	var (
 		err  error
 		flag = syscall.MS_PRIVATE
@@ -58,7 +58,7 @@ func InitializeMountNamespace(rootfs, console string, sysReadonly bool, hostRoot
 		return fmt.Errorf("create device nodes %s", err)
 	}
 
-	if err := SetupPtmx(rootfs, console, mountConfig.MountLabel, hostRootUid); err != nil {
+	if err := SetupPtmx(rootfs, console, mountConfig.MountLabel, hostRootUid, hostRootGid); err != nil {
 		return err
 	}
 

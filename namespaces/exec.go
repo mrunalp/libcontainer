@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -31,11 +30,6 @@ const (
 func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Writer, console, dataPath string, args []string, createCommand CreateCommand, setupCommand SetupCommand, startCallback func()) (int, error) {
 	var err error
 
-	hostRootUid, err := GetHostRootUid(container)
-	if err != nil {
-		return -1, err
-	}
-
 	// create a pipe so that we can syncronize with the namespaced process and
 	// pass the state and configuration to the child process
 	parent, child, err := newInitPipe()
@@ -52,7 +46,6 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	command.Stdout = stdout
 	command.Stderr = stderr
 
-	log.Println("Host Root Uid: ", hostRootUid)
 	log.Println("Starting command")
 	if err := command.Start(); err != nil {
 		child.Close()
@@ -104,24 +97,14 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	if container.Namespaces.Contains(libcontainer.NEWUSER) {
 		log.Println("Starting setup")
 		setupCmd := setupCommand(container, console, dataPath, os.Args[0])
-		setupOut, _ := setupCmd.StderrPipe()
-		err = setupCmd.Start()
+		output, err := setupCmd.CombinedOutput()
 		if err != nil {
 			command.Process.Kill()
 			command.Wait()
 			log.Println("setup failed: %v", err)
 			return -1, err
 		}
-		out, _ := ioutil.ReadAll(setupOut)
-		log.Println("Setup output: ", string(out))
-
-		if err := setupCmd.Wait(); err != nil {
-			if _, ok := err.(*exec.ExitError); !ok {
-				command.Process.Kill()
-				command.Wait()
-				return -1, err
-			}
-		}
+		log.Println("Setup output:", output)
 		log.Println("Setup return code", setupCmd.ProcessState.Sys().(syscall.WaitStatus).ExitStatus())
 	}
 
@@ -210,8 +193,25 @@ func hostIDFromMapping(containerID int, uMap []libcontainer.IDMap) (int, bool) {
 
 // Gets the root uid for the process on host which could be non-zero
 // when user namespaces are enabled.
+func GetHostRootGid(container *libcontainer.Config) (int, error) {
+	if container.Namespaces.Contains(libcontainer.NEWUSER) {
+		if container.GidMappings == nil {
+			return -1, fmt.Errorf("User namespaces enabled, but no gid mappings found.")
+		}
+		hostRootGid, found := hostIDFromMapping(0, container.GidMappings)
+		if !found {
+			return -1, fmt.Errorf("User namespaces enabled, but no root user mapping found.")
+		}
+		return hostRootGid, nil
+	}
+
+	// Return default root uid 0
+	return 0, nil
+}
+
+// Gets the root uid for the process on host which could be non-zero
+// when user namespaces are enabled.
 func GetHostRootUid(container *libcontainer.Config) (int, error) {
-	hostRootUid := 0
 	if container.Namespaces.Contains(libcontainer.NEWUSER) {
 		if container.UidMappings == nil {
 			return -1, fmt.Errorf("User namespaces enabled, but no user mappings found.")
@@ -219,12 +219,12 @@ func GetHostRootUid(container *libcontainer.Config) (int, error) {
 		hostRootUid, found := hostIDFromMapping(0, container.UidMappings)
 		if !found {
 			return -1, fmt.Errorf("User namespaces enabled, but no root user mapping found.")
-		} else {
-			return hostRootUid, nil
 		}
+		return hostRootUid, nil
 	}
 
-	return hostRootUid, nil
+	// Return default root uid 0
+	return 0, nil
 }
 
 // Converts IDMap to SysProcIDMap array and adds it to SysProcAttr.
@@ -279,9 +279,7 @@ func DefaultCreateCommand(container *libcontainer.Config, console, dataPath, ini
 	command.ExtraFiles = []*os.File{pipe}
 
 	if container.Namespaces.Contains(libcontainer.NEWUSER) {
-		if container.UidMappings != nil || container.GidMappings != nil {
-			AddUidGidMappings(command.SysProcAttr, container)
-		}
+		AddUidGidMappings(command.SysProcAttr, container)
 
 		// Default to root user when user namespaces are enabled.
 		if command.SysProcAttr.Credential == nil {

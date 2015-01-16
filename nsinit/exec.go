@@ -129,9 +129,8 @@ func startInExistingContainer(config *libcontainer.Config, state *libcontainer.S
 // Signals sent to the current process will be forwarded to container.
 func startContainer(container *libcontainer.Config, dataPath string, args []string) (int, error) {
 	var (
-		cmd      *exec.Cmd
-		setupCmd *exec.Cmd
-		sigc     = make(chan os.Signal, 10)
+		cmd  *exec.Cmd
+		sigc = make(chan os.Signal, 10)
 	)
 
 	signal.Notify(sigc)
@@ -145,11 +144,7 @@ func startContainer(container *libcontainer.Config, dataPath string, args []stri
 	}
 
 	setupCommand := func(container *libcontainer.Config, console, dataPath, init string) *exec.Cmd {
-		setupCmd = namespaces.DefaultSetupCommand(container, console, dataPath, init)
-		if logPath != "" {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("log=%s", logPath))
-		}
-		return setupCmd
+		return namespaces.DefaultSetupCommand(container, console, dataPath, init)
 	}
 
 	var (

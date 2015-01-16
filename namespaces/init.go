@@ -49,11 +49,10 @@ func Init(container *libcontainer.Config, uncleanRootfs, consolePath string, pip
 	}()
 
 	if container.Namespaces.Contains(libcontainer.NEWUSER) {
-		err = initUserNs(container, uncleanRootfs, consolePath, pipe, args)
+		return initUserNs(container, uncleanRootfs, consolePath, pipe, args)
 	} else {
-		err = initDefault(container, uncleanRootfs, consolePath, pipe, args)
+		return initDefault(container, uncleanRootfs, consolePath, pipe, args)
 	}
-	return err
 }
 
 func initDefault(container *libcontainer.Config, uncleanRootfs, consolePath string, pipe *os.File, args []string) (err error) {
@@ -108,6 +107,7 @@ func initDefault(container *libcontainer.Config, uncleanRootfs, consolePath stri
 		consolePath,
 		container.RestrictSys,
 		0, // Default Root Uid
+		0, // Default Root Gid
 		(*mount.MountConfig)(container.MountConfig)); err != nil {
 		return fmt.Errorf("setup mount namespace %s", err)
 	}

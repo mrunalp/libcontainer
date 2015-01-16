@@ -179,10 +179,16 @@ func SetupContainer(container *libcontainer.Config, args []string) error {
 		return fmt.Errorf("Failed to find hostRootUid")
 	}
 
+	hostRootGid, err := GetHostRootGid(container)
+	if err != nil {
+		return fmt.Errorf("Failed to find hostRootGid")
+	}
+
 	if err := mount.InitializeMountNamespace(rootfs,
 		consolePath,
 		container.RestrictSys,
 		hostRootUid,
+		hostRootGid,
 		(*mount.MountConfig)(container.MountConfig)); err != nil {
 		fmt.Println("mounting issue: %v", err)
 		return fmt.Errorf("setup mount namespace %s", err)
