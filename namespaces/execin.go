@@ -138,14 +138,6 @@ func SetupContainer(container *libcontainer.Config, args []string) error {
 		consolePath = args[2]
 	}
 
-	var err error
-
-	defer func() {
-		if err != nil {
-			fmt.Println("Setup failed: %v", err)
-		}
-	}()
-
 	rootfs, err := utils.ResolveRootfs(rootFs)
 	if err != nil {
 		return err
@@ -159,16 +151,14 @@ func SetupContainer(container *libcontainer.Config, args []string) error {
 
 	state, err := libcontainer.GetState(dataPath)
 	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("unable to read state.json %s", err)
+		return fmt.Errorf("unable to read state: %s", err)
 	}
 
 	if err := setupNetwork(container, &state.NetworkState); err != nil {
-		fmt.Println("networking issue: %v", err)
 		return fmt.Errorf("setup networking %s", err)
 	}
 
 	if err := setupRoute(container); err != nil {
-		fmt.Println("routing issue: %v", err)
 		return fmt.Errorf("setup route %s", err)
 	}
 
@@ -176,12 +166,12 @@ func SetupContainer(container *libcontainer.Config, args []string) error {
 
 	hostRootUid, err := GetHostRootUid(container)
 	if err != nil {
-		return fmt.Errorf("Failed to find hostRootUid")
+		return fmt.Errorf("failed to get hostRootUid %s", err)
 	}
 
 	hostRootGid, err := GetHostRootGid(container)
 	if err != nil {
-		return fmt.Errorf("Failed to find hostRootGid")
+		return fmt.Errorf("failed to get hostRootGid %s", err)
 	}
 
 	if err := mount.InitializeMountNamespace(rootfs,
@@ -190,7 +180,6 @@ func SetupContainer(container *libcontainer.Config, args []string) error {
 		hostRootUid,
 		hostRootGid,
 		(*mount.MountConfig)(container.MountConfig)); err != nil {
-		fmt.Println("mounting issue: %v", err)
 		return fmt.Errorf("setup mount namespace %s", err)
 	}
 

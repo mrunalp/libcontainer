@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"syscall"
@@ -46,10 +45,8 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	command.Stdout = stdout
 	command.Stderr = stderr
 
-	log.Println("Starting command")
 	if err := command.Start(); err != nil {
 		child.Close()
-		log.Println("Failed to launch command")
 		return -1, err
 	}
 	child.Close()
@@ -75,7 +72,6 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 	defer cgroups.RemovePaths(cgroupPaths)
 
 	var networkState network.NetworkState
-	log.Println("Initialzing networking.")
 	if err := InitializeNetworking(container, command.Process.Pid, &networkState); err != nil {
 		return terminate(err)
 	}
@@ -87,7 +83,6 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 		CgroupPaths:   cgroupPaths,
 	}
 
-	log.Println("Saving state.")
 	if err := libcontainer.SaveState(dataPath, state); err != nil {
 		return terminate(err)
 	}
@@ -95,17 +90,13 @@ func Exec(container *libcontainer.Config, stdin io.Reader, stdout, stderr io.Wri
 
 	// Start the setup process to setup the init process
 	if container.Namespaces.Contains(libcontainer.NEWUSER) {
-		log.Println("Starting setup")
 		setupCmd := setupCommand(container, console, dataPath, os.Args[0])
 		output, err := setupCmd.CombinedOutput()
-		if err != nil {
+		if err != nil || setupCmd.ProcessState.Sys().(syscall.WaitStatus).ExitStatus() != 0 {
 			command.Process.Kill()
 			command.Wait()
-			log.Println("setup failed: %v", err)
-			return -1, err
+			return -1, fmt.Errorf("setup failed: %s %s", err, output)
 		}
-		log.Println("Setup output:", output)
-		log.Println("Setup return code", setupCmd.ProcessState.Sys().(syscall.WaitStatus).ExitStatus())
 	}
 
 	// send the state to the container's init process then shutdown writes for the parent
@@ -303,11 +294,9 @@ func DefaultSetupCommand(container *libcontainer.Config, console, dataPath, init
 		"data_path=" + dataPath,
 	}
 
-	log.Println("Console", console)
 	if dataPath == "" {
 		dataPath, _ = os.Getwd()
 	}
-	log.Println("Datapath", dataPath)
 
 	if container.RootFs == "" {
 		container.RootFs, _ = os.Getwd()
@@ -315,10 +304,8 @@ func DefaultSetupCommand(container *libcontainer.Config, console, dataPath, init
 	args := []string{dataPath, container.RootFs, console}
 
 	command := exec.Command(init, append([]string{"exec", "--func", "setup", "--"}, args...)...)
-	log.Println("(%+v)", command)
 
 	// make sure the process is executed inside the context of the rootfs
-	log.Println("Rootfs: ", container.RootFs)
 	command.Dir = container.RootFs
 	command.Env = append(os.Environ(), env...)
 

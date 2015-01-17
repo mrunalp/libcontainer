@@ -60,7 +60,7 @@ func execAction(context *cli.Context) {
 	}
 
 	if err != nil {
-		log.Fatalf("failed to exec: %s %s", err, state)
+		log.Fatalf("failed to exec: %s", err)
 	}
 
 	os.Exit(exitCode)
